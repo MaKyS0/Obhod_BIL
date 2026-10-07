@@ -40,9 +40,9 @@ export function roundView(state, date) {
   const marks = new Map();
   const reasons = new Map();
   for (const r of state.rounds || []) {
-    if (r.date !== date) continue;
+    if (r.date !== date || !isPlace(r.place)) continue; // запись с неизвестным местом (чужие данные) игнорируется
     marks.set(r.studentId, r.place);
-    if (r.reason) reasons.set(r.studentId, r.reason);
+    if (typeof r.reason === 'string' && r.reason) reasons.set(r.studentId, r.reason.slice(0, REASON_MAX));
   }
   const v = yearView(state, state.settings.currentYearId);
   const totals = { total: 0, marked: 0, byPlace: Object.fromEntries(ROUND_PLACES.map((p) => [p.key, 0])) };

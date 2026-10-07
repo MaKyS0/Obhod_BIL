@@ -107,7 +107,7 @@ export async function render(ctx) {
     h('div', { class: 'row', style: 'margin-bottom:8px' },
       btn('Создать копию в браузере', async () => { try { await store.createBackup('manual'); toast('Копия создана'); ctx.refresh(); } catch (e) { toastError(e); } }),
       btn('Скачать резервную копию (JSON)', async () => { await saveBackupFile(repo); toast('Файл сохранён'); }, 'primary')),
-    h('div', { class: 'field' }, h('label', { for: 'restoreFile' }, 'Восстановить из файла (JSON)'), restoreFile),
+    h('div', { class: 'field owner-only' }, h('label', { for: 'restoreFile' }, 'Восстановить из файла (JSON)'), restoreFile),
     backups.length ? list : h('p', { class: 'muted' }, 'Копий в браузере пока нет.')));
 
   // ---- Хранилище ----
@@ -133,7 +133,7 @@ export async function render(ctx) {
         try { await repo.deleteDemo(); toast('DEMO-данные удалены'); } catch (e) { toastError(e); }
       }, 'danger-outline'))));
 
-  el.append(h('div', { class: 'card danger-zone' }, h('h2', null, 'Опасная зона'),
+  el.append(h('div', { class: 'card danger-zone owner-only' }, h('h2', null, 'Опасная зона'),
     h('p', null, 'Полная очистка удалит всех учеников, персонал, все учебные годы и историю. Настройки подключения к Google сохранятся. Перед очисткой создаётся резервная копия в браузере.'),
     btn('Очистить все данные…', async () => {
       const ok = await confirmAction({ title: 'Очистить все данные', message: 'Будут удалены ВСЕ данные: ученики, персонал, классы, история и архив.', details: [`Сейчас в базе: ${nStudents(ctx.state.students.length)}, сотрудников — ${ctx.state.staff.length}, учебных годов — ${ctx.state.years.length}.`, 'Резервная копия будет создана автоматически — её можно восстановить в этом разделе.'], confirmLabel: 'Очистить всё', typeToConfirm: 'ОЧИСТИТЬ' });

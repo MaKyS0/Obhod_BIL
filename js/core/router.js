@@ -18,7 +18,13 @@ export function createRouter({ view, routes, makeContext, onChange }) {
       const params = {};
       let ok = true;
       pat.forEach((p, i) => {
-        if (p.startsWith(':')) params[p.slice(1)] = decodeURIComponent(segs[i]);
+        if (p.startsWith(':')) {
+          try {
+            params[p.slice(1)] = decodeURIComponent(segs[i]);
+          } catch {
+            ok = false; // испорченная ссылка (%E0%A4%A…) — как несуществующая страница, без ошибки в консоли
+          }
+        }
         else if (p !== segs[i]) ok = false;
       });
       if (ok) return { route: r, params };

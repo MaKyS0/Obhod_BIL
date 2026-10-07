@@ -65,6 +65,8 @@ main { padding: 20px 24px 48px; max-width: 1280px; width: 100%; outline: none; }
 /* Допуск посетителей */
 #nav a.owner-only { display: none; }
 body[data-owner="1"] #nav a.owner-only { display: block; }
+.card.owner-only, .field.owner-only { display: none; }
+body[data-owner="1"] .card.owner-only, body[data-owner="1"] .field.owner-only { display: block; }
 body.gated .sidebar, body.gated .topbar, body.gated .banners, body.gated .backdrop { display: none !important; }
 body.gated main { max-width: 560px; margin: 0 auto; padding-top: 12vh; }
 .gate-card h1 { margin-bottom: 8px; }

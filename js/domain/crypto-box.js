@@ -32,6 +32,9 @@ export async function encryptJson(data, passphrase, { iterations = ITERATIONS } 
 
 export async function decryptJson(box, passphrase) {
   if (!isEncryptedBox(box) || box.v !== 1) throw new Error('Это не зашифрованный файл данных лицея');
+  // Параметры берутся из файла: подсунутый файл не должен подвесить браузер огромным числом итераций.
+  if (!Number.isInteger(box.iter) || box.iter < 1000 || box.iter > 5000000) throw new Error('Файл содержит недопустимые параметры шифрования');
+  if (typeof box.salt !== 'string' || typeof box.iv !== 'string' || typeof box.ct !== 'string' || box.ct.length > 40_000_000) throw new Error('Файл повреждён');
   try {
     const key = await deriveKey(passphrase, unb64(box.salt), box.iter);
     const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv), additionalData: AAD }, key, unb64(box.ct));

@@ -29,6 +29,12 @@ var OPTIONAL_STORES_ = ['rounds']; // появились позже: в стар
 var SHARED_KEYS_ = ['lyceumName', 'currentYearId', 'letters', 'minGrade', 'maxGrade', 'lastPromotionId', 'changesSincePromotion'];
 var MAX_BATCHES_ = 200;
 var SHEETS_MIN_GAP_MS_ = 15000;
+var MAX_BODY_ = 3000000;      // максимальный размер запроса, знаков
+var MAX_STATE_ = 3000000;     // максимальный размер общей базы (JSON), знаков
+var MAX_RECORD_ = 20000;      // максимальный размер одной записи, знаков
+var MAX_OPS_ = 5000;          // записей (put) и удалений (del) за один запрос
+var VISITOR_MAX_DELETE_ = 50; // допущенный посетитель не может удалить за раз больше записей, чем это (очистка — только владелец)
+var MAX_MAILS_PER_HOUR_ = 5;  // писем владельцу о новых запросах в час (квота MailApp ограничена)
 var BIG_DELETE_ = 10; // столько удалённых записей за раз считается «массовым» изменением (сохраняется копия для отката)
 
 // ---------------------------------------------------------------- установка
@@ -74,7 +80,10 @@ function installTrigger_() {
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
-    var payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    var raw = (e && e.postData && e.postData.contents) || '{}';
+    if (raw.length > MAX_BODY_) return json_({ ok: false, error: 'too-big' });
+    var payload = JSON.parse(raw);
+    if (!payload || typeof payload !== 'object') return json_({ ok: false, error: 'bad-request' });
     if (payload.type === 'access') return handleAccess_(payload);
     if (payload.type === 'live') return handleLive_(payload);
     var denied = checkToken_(payload.token);
@@ -105,7 +114,8 @@ function doPost(e) {
     SpreadsheetApp.flush();
     return json_({ ok: true, written: written, serverTime: now });
   } catch (err) {
-    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+    // Внутренности (тексты ошибок разбора) наружу не отдаём.
+    return json_({ ok: false, error: err instanceof SyntaxError ? 'bad-request' : String(err && err.message ? err.message : err) });
   } finally {
     try { lock.releaseLock(); } catch (x) { /* блокировка не была взята */ }
   }
@@ -188,7 +198,13 @@ function handleAccess_(p) {
       var found = rows.filter(function (r) { return r.hash === hash; })[0];
       if (found) return json_({ ok: true, status: found.status });
       var recent = rows.filter(function (r) { return Date.now() - new Date(r.created).getTime() < 3600000; }).length;
-      if (recent >= MAX_REQUESTS_PER_HOUR_ || rows.length >= MAX_ROWS_) return json_({ ok: false, error: 'rate-limit' });
+      if (recent >= MAX_REQUESTS_PER_HOUR_) return json_({ ok: false, error: 'rate-limit' });
+      if (rows.length >= MAX_ROWS_) {
+        // Таблица заполнена (например, спамом): освобождаем место, удаляя самые старые НЕ допущенные запросы.
+        var stale = rows.filter(function (r) { return r.status !== 'allowed'; }).sort(function (a, b) { return String(a.created) < String(b.created) ? -1 : 1; }).slice(0, 50);
+        if (!stale.length) return json_({ ok: false, error: 'rate-limit' });
+        stale.map(function (r) { return r.row; }).sort(function (a, b) { return b - a; }).forEach(function (n) { sh.deleteRow(n); });
+      }
       var note = cleanText_(p.note, 300);
       sh.appendRow([hash, name, note, 'pending', now, '', now]);
       dropAclCache_();
@@ -245,6 +261,11 @@ function handleAccess_(p) {
 function notifyOwner_(name, note, hash) {
   try {
     var props = PropertiesService.getScriptProperties();
+    // Не больше MAX_MAILS_PER_HOUR_ писем в час: остальные запросы видны на странице «Доступ».
+    var hourKey = 'MAILS_' + Math.floor(Date.now() / 3600000);
+    var sent = Number(props.getProperty(hourKey) || 0);
+    if (sent >= MAX_MAILS_PER_HOUR_) return;
+    props.setProperty(hourKey, String(sent + 1));
     var to = props.getProperty('NOTIFY_EMAIL') || Session.getEffectiveUser().getEmail();
     if (!to) return;
     var site = props.getProperty('SITE_URL');
@@ -324,21 +345,36 @@ function jsonRaw_(text) {
 }
 
 /** Проверяет и очищает пакет изменений от устройства: только известные разделы и настройки, записи с текстовым id. */
+var PLACES_ = ['sick', 'home', 'sleeping'];
+
+/** Запись допустима: объект с текстовым id, не больше MAX_RECORD_; записи обхода — со строгой проверкой полей. */
+function validRecord_(store, r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r) || typeof r.id !== 'string' || !r.id || r.id.length > 200) return false;
+  if (JSON.stringify(r).length > MAX_RECORD_) return false;
+  if (store === 'rounds') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.date)) || typeof r.studentId !== 'string' || r.studentId.length > 200) return false;
+    if (PLACES_.indexOf(r.place) < 0) return false;
+    if (r.reason !== undefined && (typeof r.reason !== 'string' || r.reason.length > 120)) return false;
+  }
+  return true;
+}
+
 function normalizeBatch_(b) {
   if (!b || typeof b !== 'object') return null;
-  var out = { put: {}, del: {}, clear: [], settings: {}, dels: 0 };
+  var out = { put: {}, del: {}, clear: [], settings: {}, dels: 0, puts: 0 };
   var ok = true;
   DATA_STORES_.forEach(function (s) {
     var recs = b.put && b.put[s];
     if (recs !== undefined && recs !== null) {
       if (!Array.isArray(recs)) { ok = false; return; }
-      recs.forEach(function (r) { if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !r.id || r.id.length > 200) ok = false; });
+      recs.forEach(function (r) { if (!validRecord_(s, r)) ok = false; });
+      out.puts += recs.length;
       out.put[s] = recs;
     }
     var ids = b.del && b.del[s];
     if (ids !== undefined && ids !== null) {
       if (!Array.isArray(ids)) { ok = false; return; }
-      ids.forEach(function (id) { if (typeof id !== 'string') ok = false; });
+      ids.forEach(function (id) { if (typeof id !== 'string' || id.length > 200) ok = false; });
       out.del[s] = ids;
       out.dels += ids.length;
     }
@@ -419,10 +455,14 @@ function handleLive_(p) {
       if (!current) return json_({ ok: false, error: 'no-state' });
       var state = JSON.parse(current);
       var batches = Array.isArray(p.batches) ? p.batches.slice(0, MAX_BATCHES_) : [];
-      var applied = 0, rejected = 0, stop = false, big = false;
+      var applied = 0, rejected = 0, stop = false, big = false, totalOps = 0;
       batches.forEach(function (raw) {
         var b = normalizeBatch_(raw);
         if (stop || !b) { rejected++; stop = true; return; }
+        totalOps += b.puts + b.dels;
+        if (totalOps > MAX_OPS_) { rejected++; stop = true; return; }
+        // Очистка и массовое удаление — только владелец (допущенный посетитель правит записи, но не стирает базу).
+        if (who.role !== 'owner' && (b.clear.length || b.dels > VISITOR_MAX_DELETE_)) { rejected++; stop = true; return; }
         // Смена учебного года (и отмена перехода) выполняется только над тем годом, который видел автор.
         if (raw.expect && state.settings.currentYearId !== raw.expect) { rejected++; stop = true; return; }
         if (b.clear.length || b.dels >= BIG_DELETE_) big = true;
@@ -432,9 +472,10 @@ function handleLive_(p) {
       var newRev = rev;
       var body = current;
       if (applied) {
-        if (big) writeChunks_(ss, UNDO_SHEET_, current);
         state.exportedAt = new Date().toISOString();
         body = JSON.stringify(state);
+        if (body.length > MAX_STATE_) return json_({ ok: false, error: 'too-big' }); // база не должна разрастаться без предела
+        if (big) writeChunks_(ss, UNDO_SHEET_, current);
         writeBackup_(ss, body);
         newRev = rev + 1;
         setRev_(newRev);
@@ -448,7 +489,7 @@ function handleLive_(p) {
     if (action === 'seed') {
       if (rev > 0 && !(who.role === 'owner' && p.force === true)) return json_({ ok: false, error: 'exists' });
       var d = p.data;
-      if (!validSnapshot_(d)) return json_({ ok: false, error: 'bad-data' });
+      if (!validSnapshot_(d) || JSON.stringify(d).length > MAX_STATE_) return json_({ ok: false, error: 'bad-data' });
       var snap = { format: d.format, version: d.version, exportedAt: new Date().toISOString(), app: d.app || '', settings: {} };
       SHARED_KEYS_.forEach(function (k) { if (Object.prototype.hasOwnProperty.call(d.settings, k)) snap.settings[k] = d.settings[k]; });
       DATA_STORES_.forEach(function (s) { snap[s] = d[s] || []; });
@@ -465,7 +506,7 @@ function handleLive_(p) {
       var written = {};
       SHEET_NAMES_.forEach(function (name) {
         var sh = sheetsIn[name];
-        if (sh) written[name] = writeSheet_(ss, name, sh.header || [], sh.rows || []);
+        if (sh) { var c = cleanSheet_(sh); if (c.header.length) written[name] = writeSheet_(ss, name, c.header, c.rows); }
       });
       var props = PropertiesService.getScriptProperties();
       props.setProperty('SHEETS_AT', String(Date.now()));
@@ -480,6 +521,19 @@ function handleLive_(p) {
   } finally {
     if (locked) { try { lock.releaseLock(); } catch (x) { /* блокировка не была взята */ } }
   }
+}
+
+/** Лист от устройства: только числа и короткий текст, не больше 3000 строк × 20 столбцов (остальное отбрасывается). */
+function cleanSheet_(sh) {
+  var cell = function (v) { return typeof v === 'number' && isFinite(v) ? v : typeof v === 'string' ? v.substring(0, 500) : ''; };
+  var width = Math.min(20, Array.isArray(sh.header) ? sh.header.length : 0);
+  var header = (Array.isArray(sh.header) ? sh.header : []).slice(0, width).map(cell);
+  var rows = (Array.isArray(sh.rows) ? sh.rows : []).slice(0, 3000).map(function (r) {
+    var row = (Array.isArray(r) ? r : []).slice(0, width).map(cell);
+    while (row.length < width) row.push('');
+    return row;
+  });
+  return { header: header, rows: rows };
 }
 
 /** Из меню таблицы: вернуть общую базу к версии, сохранённой перед последним массовым изменением. */

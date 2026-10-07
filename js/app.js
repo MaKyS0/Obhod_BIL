@@ -48,6 +48,11 @@ const ROUTES = [
 const DAY = 24 * 3600 * 1000;
 
 async function main() {
+  // Защита от кликджекинга: страница не работает внутри чужого <iframe> (заголовок frame-ancestors на GitHub Pages задать нельзя).
+  if (window.top !== window.self) {
+    document.body.replaceChildren(Object.assign(document.createElement('p'), { textContent: 'Сайт нельзя открывать внутри другой страницы. Откройте его напрямую.' }));
+    return;
+  }
   const view = $('#view');
   let versionBanner = false;
   const db = await openDb({ onVersionChange: () => { versionBanner = true; updateChrome(); } });
@@ -79,6 +84,8 @@ async function main() {
     await live.start({ wait: firstJoin });
     view.replaceChildren();
   }
+
+  if (access.owner) document.body.dataset.owner = '1'; // без допуска (локальный режим) пользователь — сам себе владелец
 
   const router = createRouter({
     view,
