@@ -20,6 +20,7 @@ function eq(a, b, msg) { if (a !== b) throw new Error(`${msg}: ожидалос�
 
 async function scenario(name, fn, { viewport = { width: 1280, height: 900 }, init, ignoreErrors = null } = {}) {
   const context = await browser.newContext({ viewport, acceptDownloads: true });
+  await context.addInitScript("window.__LYCEUM_ACCESS_ENDPOINT__ = '';"); // обычные сценарии идут без допуска, чтобы не зависеть от config.js
   if (init) await context.addInitScript(init);
   const errors = [];
   const watch = (page) => {
