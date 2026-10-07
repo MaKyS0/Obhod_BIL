@@ -9,7 +9,7 @@ import { validateBackup, exportData } from '../domain/backup.js';
 import { planPromotion, planUndo, planFinalizeGraduation } from '../domain/promotion.js';
 import { planStudentImport, planStaffImport, parseJsonImport } from '../domain/importer.js';
 import { defaultSettings } from '../domain/state.js';
-import { isPlace, roundId, earliestRoundDate } from '../domain/rounds.js';
+import { isPlace, roundId, earliestRoundDate, cleanReason } from '../domain/rounds.js';
 
 export class UserError extends Error {
   constructor(message, code = 'USER') {
@@ -335,7 +335,10 @@ export function createRepo(store) {
         const id = roundId(date, sid);
         if (place) {
           const enr = enrollmentOf(sid);
-          addPut(changes, 'rounds', { id, date, studentId: sid, classId: enr ? enr.classId : null, place, updatedAt: nowISO() });
+          const prev = S().rounds.find((r) => r.id === id);
+          const rec = { id, date, studentId: sid, classId: enr ? enr.classId : null, place, updatedAt: nowISO() };
+          if (prev && prev.place === place && prev.reason) rec.reason = prev.reason; // то же место — причина остаётся; другое место — причина сбрасывается
+          addPut(changes, 'rounds', rec);
           n++;
         } else if (S().rounds.some((r) => r.id === id)) {
           addDel(changes, 'rounds', id);
@@ -347,6 +350,17 @@ export function createRepo(store) {
       if (!n && !(changes.del.rounds || []).length) return 0;
       await store.commit(changes, { system: true });
       return n;
+    },
+
+    // Причина к отметке обхода (например, «Температура»). Пустая строка убирает причину. Сначала нужно отметить место.
+    async setRoundReason(studentId, date, reason) {
+      const rec = S().rounds.find((r) => r.id === roundId(date, studentId));
+      if (!rec) throw new UserError('Сначала отметьте, где ученик, — потом можно указать причину');
+      const text = cleanReason(reason);
+      const next = { ...rec, updatedAt: nowISO() };
+      if (text) next.reason = text;
+      else delete next.reason;
+      await store.commit({ put: { rounds: [next] }, del: {} }, { system: true });
     },
 
     // ---------- настройки ----------

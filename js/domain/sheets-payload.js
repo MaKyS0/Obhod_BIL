@@ -64,7 +64,7 @@ export function buildSheetsPayload(state, { includeBackup = true, now = new Date
   // Вечерний обход: самая свежая дата, по которой есть отметки (иначе сегодняшняя).
   const roundDate = state.rounds && state.rounds.length ? state.rounds.reduce((m, r) => (r.date > m ? r.date : m), '') : todayISO();
   const round = [];
-  for (const g of roundView(state, roundDate).groups) for (const x of g.students) round.push([formatDate(roundDate), g.name, fullName(x.student), x.place ? ROUND_LABEL[x.place] : 'не отмечен']);
+  for (const g of roundView(state, roundDate).groups) for (const x of g.students) round.push([formatDate(roundDate), g.name, fullName(x.student), x.place ? ROUND_LABEL[x.place] : 'не отмечен', x.reason || '']);
 
   const sheets = {
     'Ученики': { header: ['ID', 'Фамилия', 'Имя', 'Отчество', 'ФИО', 'Дата рождения', 'Класс', 'Параллель', 'Статус', 'Учебный год', 'Примечание'], rows: rowsSafe(students) },
@@ -74,7 +74,7 @@ export function buildSheetsPayload(state, { includeBackup = true, now = new Date
     'Отчёт': { header: ['Показатель', 'Значение'], rows: rowsSafe(report) },
     'Архив': { header: ['ID', 'ФИО', 'Дата рождения', 'Статус', 'Год выпуска / дата выбытия', 'Последний класс'], rows: rowsSafe(archive) },
     'История': { header: ['Учебный год', 'Класс', 'Учеников', ROLE_LABEL.teacher, ROLE_LABEL.tutor], rows: rowsSafe(history) },
-    'Вечерний обход': { header: ['Дата', 'Класс', 'Ученик', 'Где'], rows: rowsSafe(round) },
+    'Вечерний обход': { header: ['Дата', 'Класс', 'Ученик', 'Где', 'Причина'], rows: rowsSafe(round) },
   };
 
   return {

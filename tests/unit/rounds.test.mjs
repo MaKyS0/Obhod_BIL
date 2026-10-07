@@ -90,7 +90,7 @@ test('обход: лист «Вечерний обход» в таблице —
   const g = roundView(env.S(), today).groups[0];
   await env.repo.setRound(g.students[0].student.id, today, 'sick');
   const sheet = buildSheetsPayload(env.S()).sheets['Вечерний обход'];
-  assert.deepEqual(sheet.header, ['Дата', 'Класс', 'Ученик', 'Где']);
+  assert.deepEqual(sheet.header, ['Дата', 'Класс', 'Ученик', 'Где', 'Причина']);
   assert.equal(sheet.rows.length, 30);
   assert.equal(sheet.rows.filter((r) => r[3] === 'Болеет').length, 1);
   assert.equal(sheet.rows.filter((r) => r[3] === 'не отмечен').length, 29);
@@ -144,4 +144,32 @@ test('обход + сервер: общая база, созданная до п
   assert.equal(r.applied, 1);
   const server = JSON.parse(callGas(sb, 'doGet', { parameter: { action: 'backup', token } }).backup);
   assert.equal(server.rounds.length, 1);
+});
+
+test('обход: причина к отметке — задать, заменить, убрать; сбрасывается при смене места; чистится и обрезается', async () => {
+  const env = await makeEnv();
+  await seed(env, 1);
+  const sid = env.S().students[0].id;
+  await assert.rejects(() => env.repo.setRoundReason(sid, today, 'Температура'), /Сначала отметьте/);
+  await env.repo.setRound(sid, today, 'sick');
+  await env.repo.setRoundReason(sid, today, '  Температура \n 38,5  ');
+  const rec = () => env.S().rounds.find((r) => r.studentId === sid);
+  assert.equal(rec().reason, 'Температура 38,5', 'пробелы и переводы строк убраны');
+  assert.equal(roundView(env.S(), today).groups[0].students[0].reason, 'Температура 38,5');
+  await env.repo.setRound(sid, today, 'sick'); // то же место ещё раз — причина остаётся
+  assert.equal(rec().reason, 'Температура 38,5');
+  await env.repo.setRound(sid, today, null);
+  assert.equal(rec(), undefined, 'отметка снята вместе с причиной');
+  await env.repo.setRound(sid, today, 'sick');
+  await env.repo.setRoundReason(sid, today, 'х'.repeat(500));
+  assert.equal(rec().reason.length, 120, 'причина не длиннее 120 знаков');
+  await env.repo.setRound(sid, today, 'home');
+  assert.equal(rec().reason, undefined, 'другое место — причина сброшена');
+  await env.repo.setRoundReason(sid, today, 'Отпущен родителями');
+  await env.repo.setRoundReason(sid, today, '');
+  assert.equal('reason' in rec(), false, 'пустая строка убирает причину');
+  // лист таблицы
+  await env.repo.setRoundReason(sid, today, 'Выходной');
+  const sheet = buildSheetsPayload(env.S()).sheets['Вечерний обход'];
+  assert.equal(sheet.rows.find((r) => r[3] === 'С дома')[4], 'Выходной');
 });

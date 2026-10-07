@@ -3,7 +3,9 @@
 import { h } from '../ui/dom.js';
 import { pageHead, btn, emptyState } from '../ui/common.js';
 import { toastError } from '../ui/toast.js';
-import { roundView, ROUND_PLACES, earliestRoundDate } from '../domain/rounds.js';
+import { roundView, ROUND_PLACES, ROUND_LABEL, ROUND_REASONS, REASON_MAX, earliestRoundDate } from '../domain/rounds.js';
+import { openModal } from '../ui/modal.js';
+import { field } from '../ui/form.js';
 import { fullName } from '../domain/people.js';
 import { todayISO, formatDate } from '../domain/dates.js';
 import { nStudents } from '../domain/plural.js';
@@ -85,17 +87,47 @@ export function render(ctx) {
     if (rest.length > 1) {
       body.append(h('div', { class: 'round-bulk' }, btn(`Всем неотмеченным (${rest.length}): Ночует`, () => bulk(g, rest), 'sm', { 'data-bulk': g.id })));
     }
-    for (const { student, place } of g.students) {
+    for (const { student, place, reason } of g.students) {
       body.append(h('div', { class: 'round-row', 'data-place': place || '', 'data-student': student.id },
         h('span', { class: 'round-name' }, fullName(student)),
         h('div', { class: 'round-btns', role: 'group', 'aria-label': `Где ${fullName(student)}` },
           ...ROUND_PLACES.map((p) => h('button', {
             type: 'button', class: `rp rp-${p.key}`, 'aria-pressed': place === p.key ? 'true' : 'false', 'data-rk': `${student.id}:${p.key}`,
             onclick: () => tap(g, student.id, place === p.key ? null : p.key),
-          }, p.label)))));
+          }, p.label))),
+        place ? h('button', { type: 'button', class: `round-reason${reason ? ' has' : ''}`, 'data-reason-for': student.id, onclick: () => askReason(student, place, reason) }, reason ? [h('span', { class: 'rr-label' }, 'Причина: '), reason] : '＋ Причина') : null));
     }
     sec.append(body);
     return sec;
+  }
+
+  // Причина к отметке: одно касание по готовой причине или своя строка.
+  function askReason(student, place, current) {
+    const save = async (text, ctxm) => {
+      try {
+        await repo.setRoundReason(student.id, ui.date, text);
+        ctxm.close(true);
+        draw();
+      } catch (e) {
+        toastError(e);
+      }
+    };
+    const custom = field({ label: 'Другая причина', name: 'roundReason', value: current || '', attrs: { maxlength: REASON_MAX }, placeholder: 'Например: был у врача' });
+    let mctx = null;
+    const presets = ROUND_REASONS[place] || [];
+    const body = h('div', null,
+      h('p', { class: 'muted' }, `${fullName(student)} — ${ROUND_LABEL[place].toLowerCase()}`),
+      presets.length ? h('div', { class: 'reason-chips', role: 'group', 'aria-label': 'Готовые причины' }, presets.map((t) => h('button', { type: 'button', class: `reason-chip${t === current ? ' on' : ''}`, onclick: () => save(t, mctx) }, t))) : null,
+      custom.el);
+    mctx = openModal({
+      title: 'Причина',
+      body,
+      actions: [
+        { label: 'Сохранить', kind: 'primary', run: async () => { await repo.setRoundReason(student.id, ui.date, custom.get()); draw(); } },
+        ...(current ? [{ label: 'Убрать причину', kind: 'danger-outline', run: async () => { await repo.setRoundReason(student.id, ui.date, ''); draw(); } }] : []),
+        { label: 'Отмена', kind: 'secondary' },
+      ],
+    });
   }
 
   // Отметка → запись → перерисовка. Когда класс стал «готов», он сворачивается: следующий класс — сразу под ним.

@@ -8,6 +8,14 @@ export const ROUND_PLACES = [
   { key: 'sleeping', label: 'Ночует' },
 ];
 export const ROUND_LABEL = Object.fromEntries(ROUND_PLACES.map((p) => [p.key, p.label]));
+// Быстрые причины для частых случаев (можно ввести и свою). Для «Ночует» готовых причин нет — только своя.
+export const ROUND_REASONS = {
+  sick: ['Температура', 'Простуда', 'Болит живот', 'Болит голова', 'В медпункте', 'В больнице'],
+  home: ['Отпущен родителями', 'Семейные обстоятельства', 'Выходной', 'Поездка / соревнования'],
+  sleeping: [],
+};
+export const REASON_MAX = 120;
+export const cleanReason = (v) => String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, REASON_MAX);
 export const isPlace = (v) => Object.prototype.hasOwnProperty.call(ROUND_LABEL, v);
 
 // Сколько дней хранятся отметки (сегодня + два предыдущих дня): база остаётся лёгкой, старые отметки удаляются сами.
@@ -30,11 +38,16 @@ export const earliestRoundDate = (today) => shiftDate(today, -(ROUND_KEEP_DAYS -
  */
 export function roundView(state, date) {
   const marks = new Map();
-  for (const r of state.rounds || []) if (r.date === date) marks.set(r.studentId, r.place);
+  const reasons = new Map();
+  for (const r of state.rounds || []) {
+    if (r.date !== date) continue;
+    marks.set(r.studentId, r.place);
+    if (r.reason) reasons.set(r.studentId, r.reason);
+  }
   const v = yearView(state, state.settings.currentYearId);
   const totals = { total: 0, marked: 0, byPlace: Object.fromEntries(ROUND_PLACES.map((p) => [p.key, 0])) };
   const groupOf = (id, name, list) => {
-    const students = list.map(({ student }) => ({ student, place: marks.get(student.id) || null }));
+    const students = list.map(({ student }) => ({ student, place: marks.get(student.id) || null, reason: reasons.get(student.id) || '' }));
     const marked = students.filter((x) => x.place).length;
     for (const x of students) if (x.place) totals.byPlace[x.place]++;
     totals.total += students.length;

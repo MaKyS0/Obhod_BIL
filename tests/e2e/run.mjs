@@ -664,8 +664,29 @@ await scenario('Вечерний обход (телефон 375×812): отме�
   eq(await state(page, "S.rounds.filter(r => r.classId === '2026-2027:7A').length"), n, 'отметки записаны в базу');
   assert((await page.textContent('.pagehead .sub')).includes('готово классов: 1 из 15'), 'заголовок: готово классов');
 
-  // снять отметку — класс снова серый; повторное касание того же места снимает
+  // причина: у первого ученика 7A (отмечен «Ночует») — своя причина; у второго («Болеет») — готовая одним касанием
   await page.click('button.round-head[data-class="2026-2027:7A"]');
+  const first = page.locator('section[data-class="2026-2027:7A"] .round-row').nth(0);
+  const second = page.locator('section[data-class="2026-2027:7A"] .round-row').nth(1);
+  eq(await second.locator('button.rp-sick').getAttribute('aria-pressed'), 'true', 'второй ученик отмечен «Болеет»');
+  eq(await first.locator('.round-reason').innerText(), '＋ Причина', 'у отмеченного есть кнопка «Причина»');
+  await second.locator('.round-reason').click();
+  eq(await modal(page).count(), 1, 'окно причины');
+  assert((await modal(page).locator('.reason-chip').count()) >= 4, 'готовые причины для «Болеет»');
+  await modal(page).locator('.reason-chip:has-text("Температура")').click();
+  await page.waitForSelector('dialog.modal[open]', { state: 'detached' });
+  await page.waitForSelector('section[data-class="2026-2027:7A"] .round-row:has-text("Причина: Температура")');
+  await first.locator('.round-reason').click();
+  await modal(page).locator('input[name=roundReason]').fill('Был у врача');
+  await modal(page).locator('button:has-text("Сохранить")').click();
+  await page.waitForSelector('section[data-class="2026-2027:7A"] .round-row:has-text("Причина: Был у врача")');
+  const withReason = await state(page, 'S.rounds.filter((r) => r.reason).length');
+  eq(withReason, 2, 'две причины в базе');
+  // смена места сбрасывает причину
+  await second.locator('button.rp-home').click();
+  await page.waitForFunction(() => window.__lyceum.store.state.rounds.filter((r) => r.reason).length === 1);
+
+  // снять отметку — класс снова серый; повторное касание того же места снимает (класс 7A уже раскрыт)
   await page.locator('section[data-class="2026-2027:7A"] .round-row').first().locator('button[aria-pressed="true"]').click();
   await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="false"]');
   eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(233, 236, 240)', 'серый');
