@@ -37,9 +37,11 @@ export function createRouter({ view, routes, makeContext, onChange }) {
       }
     }
     cleanup = null;
+    const refreshed = !!current && current.path === path && current.query && JSON.stringify(current.query) === JSON.stringify(query);
+    const scrollY = window.scrollY;
     view.replaceChildren();
     const route = m ? m.route : { name: 'notfound', render: (ctx) => ctx.view.append(Object.assign(document.createElement('p'), { textContent: 'Страница не найдена.', className: 'loading' })) };
-    current = { name: route.name, path, query, params: m ? m.params : {} };
+    current = { name: route.name, path, query, params: m ? m.params : {}, refreshed };
     try {
       const ctx = makeContext({ view, params: current.params, query, route: current });
       cleanup = (await route.render(ctx)) || null;
@@ -50,6 +52,7 @@ export function createRouter({ view, routes, makeContext, onChange }) {
       box.textContent = `Ошибка при отображении страницы: ${e.message}`;
       view.replaceChildren(box);
     }
+    if (refreshed) window.scrollTo(0, scrollY);
     onChange?.(current);
   }
 

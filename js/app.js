@@ -22,12 +22,14 @@ import * as importExport from './pages/import-export.js';
 import * as settings from './pages/settings.js';
 import * as search from './pages/search.js';
 import * as accessPage from './pages/access.js';
+import * as rounds from './pages/rounds.js';
 import { accessEndpoint } from './config.js';
 import { runGate, watchAccess } from './ui/gate.js';
 import { listRequests } from './services/access.js';
 
 const ROUTES = [
   ['dashboard', '/', dashboard],
+  ['rounds', '/rounds', rounds],
   ['classes', '/classes', classes],
   ['classes', '/class/:id', classDetail],
   ['students', '/students', students],
@@ -87,7 +89,7 @@ async function main() {
       const r = ROUTES.find((x) => x.name === route.name);
       document.title = `${(r && r.title) || 'Учёт лицея'} — ${store.state.settings.lyceumName}`;
       closeNav();
-      window.scrollTo(0, 0);
+      if (!route.refreshed) window.scrollTo(0, 0); // при обновлении той же страницы (чужая правка, своя отметка) прокрутка остаётся на месте
       const inSearch = route.name === 'search';
       if (!inSearch && document.activeElement !== searchInput) searchInput.value = '';
     },

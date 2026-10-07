@@ -9,6 +9,7 @@ import { validateBackup, exportData } from '../domain/backup.js';
 import { planPromotion, planUndo, planFinalizeGraduation } from '../domain/promotion.js';
 import { planStudentImport, planStaffImport, parseJsonImport } from '../domain/importer.js';
 import { defaultSettings } from '../domain/state.js';
+import { isPlace, roundId, earliestRoundDate } from '../domain/rounds.js';
 
 export class UserError extends Error {
   constructor(message, code = 'USER') {
@@ -314,6 +315,40 @@ export function createRepo(store) {
       await store.commit(changes);
     },
 
+    // ---------- вечерний обход ----------
+    // Отметка «где ученик вечером» на дату; place = null снимает отметку. Старые отметки (старше ROUND_KEEP_DAYS) удаляются заодно.
+    // Запись служебная (system): страница обхода обновляется сама, остальные экраны не перерисовываются.
+    async setRound(studentId, date, place) {
+      return api.setRounds([studentId], date, place);
+    },
+
+    async setRounds(studentIds, date, place) {
+      if (place !== null && !isPlace(place)) throw new UserError('Неизвестное место ученика');
+      const today = todayISO();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today || date < earliestRoundDate(today)) throw new UserError('Отметить можно только сегодняшний обход и два предыдущих дня');
+      const idx = getIndex(S());
+      const changes = emptyChanges();
+      let n = 0;
+      for (const sid of studentIds) {
+        const st = idx.students.get(sid);
+        if (!st) throw new UserError('Ученик не найден');
+        const id = roundId(date, sid);
+        if (place) {
+          const enr = enrollmentOf(sid);
+          addPut(changes, 'rounds', { id, date, studentId: sid, classId: enr ? enr.classId : null, place, updatedAt: nowISO() });
+          n++;
+        } else if (S().rounds.some((r) => r.id === id)) {
+          addDel(changes, 'rounds', id);
+          n++;
+        }
+      }
+      const cutoff = earliestRoundDate(today);
+      for (const r of S().rounds) if (r.date < cutoff) addDel(changes, 'rounds', r.id);
+      if (!n && !(changes.del.rounds || []).length) return 0;
+      await store.commit(changes, { system: true });
+      return n;
+    },
+
     // ---------- настройки ----------
     async updateSettings(patch) {
       const p = { ...patch };
@@ -381,7 +416,7 @@ export function createRepo(store) {
       await store.createBackup('before-restore');
       const keep = { sheetsUrl: S().settings.sheetsUrl, sheetsToken: S().settings.sheetsToken };
       const changes = { clear: [...DATA_STORES], put: {}, del: {}, settings: null };
-      for (const s of DATA_STORES) changes.put[s] = data[s];
+      for (const s of DATA_STORES) changes.put[s] = data[s] || [];
       changes.settings = { ...defaultSettings(), ...data.settings, ...(data.settings.sheetsUrl ? {} : { sheetsUrl: keep.sheetsUrl }), sheetsToken: keep.sheetsToken, initialized: true, dirtySinceSync: true, key: 'settings' };
       for (const k of LIVE_SETTINGS) delete changes.settings[k]; // служебные поля общей базы остаются как были
       await store.commit(changes, { system: true });

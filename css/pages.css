@@ -51,3 +51,54 @@ details.class-block .inner { padding: 4px 16px 12px; }
 .danger-zone > h2 { color: var(--danger); }
 .script-box { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--surface-2); border: 1px solid var(--border); padding: 10px; border-radius: var(--radius); max-height: 220px; overflow: auto; white-space: pre; }
 .print-only { display: none; }
+
+/* Вечерний обход (сначала телефон) */
+.round-summary { display: grid; gap: 12px; margin-bottom: 12px; }
+.round-progress { height: 10px; background: #dfe3e8; border-radius: 6px; overflow: hidden; }
+.round-progress > i { display: block; height: 100%; background: #3f9b45; transition: width .2s; }
+.round-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.rc { padding: 4px 10px; border-radius: 14px; font-size: 14px; background: #eceff3; color: var(--text); white-space: nowrap; }
+.rc b { font-variant-numeric: tabular-nums; }
+.rc-sleeping { background: #e3ecf6; color: #17406a; }
+.rc-sick { background: #fbe4e1; color: #8c1f17; }
+.rc-home { background: #fff0cf; color: #6e4300; }
+.round-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; }
+.round-date { display: flex; align-items: center; gap: 8px; }
+.round-date input { min-width: 150px; }
+.round-only { min-height: 44px; }
+.round-list { display: grid; gap: 10px; }
+.round-class { border: 2px solid #c3c9d1; border-radius: 10px; background: #e9ecf0; overflow: hidden; }
+.round-class[data-done="true"] { border-color: #5fb365; background: #d9f0db; }
+.round-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 16px; border: 0; background: transparent; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.round-class-name { font-size: 22px; font-weight: 700; min-width: 3.2ch; }
+.round-class-count { flex: 1; font-size: 15px; color: #4b5563; }
+.round-class[data-done="true"] .round-class-name, .round-class[data-done="true"] .round-class-count { color: #1d6a25; }
+.round-chevron { font-size: 18px; color: #4b5563; }
+.round-body { background: var(--surface); padding: 4px 12px 12px; border-top: 1px solid var(--border); }
+.round-bulk { padding: 10px 0 4px; }
+.round-bulk .btn { width: 100%; min-height: 46px; }
+.round-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.round-row:last-child { border-bottom: 0; }
+.round-name { display: block; font-size: 17px; font-weight: 600; line-height: 1.3; margin-bottom: 10px; overflow-wrap: anywhere; }
+.round-row[data-place=""] .round-name::after { content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 50%; background: #b9c0c9; vertical-align: middle; }
+.round-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.rp { min-height: 52px; padding: 6px 4px; border: 2px solid var(--border-strong); border-radius: 10px; background: #fff; font-size: 15px; font-weight: 600; line-height: 1.2; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.rp:active { transform: scale(.97); }
+.rp[aria-pressed="true"] { color: #fff; border-color: transparent; }
+.rp-sleeping[aria-pressed="true"] { background: #1f4e79; }
+.rp-sick[aria-pressed="true"] { background: #b3382c; }
+.rp-home[aria-pressed="true"] { background: #a86100; }
+.round-alldone { text-align: center; background: #d9f0db; border-color: #5fb365; }
+.round-alldone h2 { color: #1d6a25; }
+@media (min-width: 640px) {
+  .round-row { display: flex; align-items: center; gap: 16px; }
+  .round-name { flex: 1; margin: 0; }
+  .round-btns { width: 380px; flex: none; }
+  .rp { min-height: 46px; }
+}
+@media (max-width: 639px) {
+  .round-summary { position: sticky; top: 0; z-index: 5; margin: 0 -12px 10px; border-radius: 0; border-left: 0; border-right: 0; padding: 10px 12px; gap: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+  .round-counts .rc { font-size: 13px; padding: 3px 8px; }
+  .round-date input { min-width: 0; }
+}
+.round-dash a.btn { margin-top: 8px; }

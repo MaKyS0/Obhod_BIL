@@ -7,8 +7,10 @@ import { yearLabel, compareYears } from './years.js';
 import { exportData } from './backup.js';
 import { compareClasses } from './classes.js';
 import { cmp } from './collate.js';
+import { roundView, ROUND_LABEL } from './rounds.js';
+import { todayISO } from './dates.js';
 
-export const SHEET_NAMES = ['Ученики', 'Классы', 'Учителя', 'Воспитатели', 'Отчёт', 'Архив', 'История'];
+export const SHEET_NAMES = ['Ученики', 'Классы', 'Учителя', 'Воспитатели', 'Отчёт', 'Архив', 'История', 'Вечерний обход'];
 
 // Значение, начинающееся с = + - @, превращается в текст (защита от формул).
 export function safeCell(v) {
@@ -59,6 +61,11 @@ export function buildSheetsPayload(state, { includeBackup = true, now = new Date
     for (const c of v.classes.slice().sort(compareClasses)) history.push([yearLabel(y.id), c.name, c.count, fullName(c.teacher), fullName(c.tutor)]);
   }
 
+  // Вечерний обход: самая свежая дата, по которой есть отметки (иначе сегодняшняя).
+  const roundDate = state.rounds && state.rounds.length ? state.rounds.reduce((m, r) => (r.date > m ? r.date : m), '') : todayISO();
+  const round = [];
+  for (const g of roundView(state, roundDate).groups) for (const x of g.students) round.push([formatDate(roundDate), g.name, fullName(x.student), x.place ? ROUND_LABEL[x.place] : 'не отмечен']);
+
   const sheets = {
     'Ученики': { header: ['ID', 'Фамилия', 'Имя', 'Отчество', 'ФИО', 'Дата рождения', 'Класс', 'Параллель', 'Статус', 'Учебный год', 'Примечание'], rows: rowsSafe(students) },
     'Классы': { header: ['Учебный год', 'Класс', 'Параллель', 'Буква', 'Учеников', ROLE_LABEL.teacher, ROLE_LABEL.tutor, 'Примечание'], rows: rowsSafe(classes) },
@@ -67,6 +74,7 @@ export function buildSheetsPayload(state, { includeBackup = true, now = new Date
     'Отчёт': { header: ['Показатель', 'Значение'], rows: rowsSafe(report) },
     'Архив': { header: ['ID', 'ФИО', 'Дата рождения', 'Статус', 'Год выпуска / дата выбытия', 'Последний класс'], rows: rowsSafe(archive) },
     'История': { header: ['Учебный год', 'Класс', 'Учеников', ROLE_LABEL.teacher, ROLE_LABEL.tutor], rows: rowsSafe(history) },
+    'Вечерний обход': { header: ['Дата', 'Класс', 'Ученик', 'Где'], rows: rowsSafe(round) },
   };
 
   return {

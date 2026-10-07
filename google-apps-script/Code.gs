@@ -18,13 +18,14 @@
  * и ежедневный триггер.
  */
 
-var SHEET_NAMES_ = ['Ученики', 'Классы', 'Учителя', 'Воспитатели', 'Отчёт', 'Архив', 'История'];
+var SHEET_NAMES_ = ['Ученики', 'Классы', 'Учителя', 'Воспитатели', 'Отчёт', 'Архив', 'История', 'Вечерний обход'];
 var BACKUP_SHEET_ = '_Резерв';
 var LOG_SHEET_ = '_Журнал';
 var CHUNK_ = 40000; // лимит ячейки Google Таблиц — 50 000 символов
 var STALE_HOURS_ = 26;
 var UNDO_SHEET_ = '_Откат';
-var DATA_STORES_ = ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments', 'promotions'];
+var DATA_STORES_ = ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments', 'promotions', 'rounds'];
+var OPTIONAL_STORES_ = ['rounds']; // появились позже: в старых копиях их нет, это не ошибка
 var SHARED_KEYS_ = ['lyceumName', 'currentYearId', 'letters', 'minGrade', 'maxGrade', 'lastPromotionId', 'changesSincePromotion'];
 var MAX_BATCHES_ = 200;
 var SHEETS_MIN_GAP_MS_ = 15000;
@@ -349,6 +350,7 @@ function normalizeBatch_(b) {
 
 /** Те же правила, что и в js/domain/state.js → applyChanges (сначала очистка, потом удаление, потом запись). */
 function applyChanges_(state, c) {
+  DATA_STORES_.forEach(function (s) { if (!Array.isArray(state[s])) state[s] = []; });
   c.clear.forEach(function (s) { state[s] = []; });
   DATA_STORES_.forEach(function (s) {
     var ids = c.del[s];
@@ -373,7 +375,10 @@ function applyChanges_(state, c) {
 
 function validSnapshot_(d) {
   if (!d || typeof d !== 'object' || d.format !== 'lyceum-registry' || typeof d.version !== 'number') return false;
-  for (var i = 0; i < DATA_STORES_.length; i++) if (!Array.isArray(d[DATA_STORES_[i]])) return false;
+  for (var i = 0; i < DATA_STORES_.length; i++) {
+    var st = DATA_STORES_[i];
+    if (!Array.isArray(d[st]) && !(OPTIONAL_STORES_.indexOf(st) >= 0 && d[st] === undefined)) return false;
+  }
   return !!(d.settings && typeof d.settings === 'object' && typeof d.settings.currentYearId === 'string');
 }
 
@@ -446,7 +451,7 @@ function handleLive_(p) {
       if (!validSnapshot_(d)) return json_({ ok: false, error: 'bad-data' });
       var snap = { format: d.format, version: d.version, exportedAt: new Date().toISOString(), app: d.app || '', settings: {} };
       SHARED_KEYS_.forEach(function (k) { if (Object.prototype.hasOwnProperty.call(d.settings, k)) snap.settings[k] = d.settings[k]; });
-      DATA_STORES_.forEach(function (s) { snap[s] = d[s]; });
+      DATA_STORES_.forEach(function (s) { snap[s] = d[s] || []; });
       if (rev > 0) writeChunks_(ss, UNDO_SHEET_, readChunks_(ss, BACKUP_SHEET_));
       writeBackup_(ss, JSON.stringify(snap));
       setRev_(rev + 1);

@@ -619,6 +619,87 @@ await scenario('Общая база: два устройства видят од
   }
 });
 
+await scenario('Вечерний обход (телефон 375×812): отметки одним касанием, класс зеленеет, когда отмечены все, массовая отметка, фильтр, сохранение', async (page) => {
+  await loadDemo(page);
+  await go(page, '#/rounds');
+  await page.waitForSelector('section.round-class');
+  eq(await page.locator('section.round-class').count(), 15, 'все классы в списке');
+  eq(await page.locator('section.round-class[data-done="true"]').count(), 0, 'пока ни один класс не готов');
+  const bg = (sel) => page.$eval(sel, (e) => getComputedStyle(e).backgroundColor);
+  const grayBg = await bg('section.round-class[data-class="2026-2027:7A"]');
+  eq(grayBg, 'rgb(233, 236, 240)', 'незавершённый класс серый');
+  assert((await page.textContent('.pagehead .sub')).includes('отмечено 0 из'), 'счётчик в заголовке');
+
+  // раскрыть 7A, проверить удобство на телефоне
+  await page.click('button.round-head[data-class="2026-2027:7A"]');
+  const n = await page.locator('section[data-class="2026-2027:7A"] .round-row').count();
+  assert(n > 5, `в 7A есть ученики (${n})`);
+  const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  assert(w[0] <= w[1], `нет горизонтальной прокрутки на 375px (${w[0]} > ${w[1]})`);
+  const sizes = await page.$$eval('section[data-class="2026-2027:7A"] .rp', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
+  assert(sizes.every(([sw, sh]) => sh >= 48 && sw >= 90), `кнопки крупные для пальца: ${JSON.stringify(sizes.slice(0, 3))}`);
+  eq(await page.$$eval('section[data-class="2026-2027:7A"] .rp', (els) => els.map((e) => e.textContent).slice(0, 3).join('|')), 'Болеет|С дома|Ночует', 'три места');
+
+  // отметки: разные места; последняя отметка делает класс зелёным и сворачивает его
+  const places = ['sleeping', 'sick', 'home'];
+  for (let i = 0; i < n; i++) {
+    const row = page.locator('section[data-class="2026-2027:7A"] .round-row').nth(i);
+    if (i === 2) {
+      // прокрутка сохраняется после касания
+      await page.evaluate(() => window.scrollTo(0, 400));
+      const y0 = await page.evaluate(() => window.scrollY);
+      await row.locator(`button.rp-${places[i % 3]}`).click();
+      await page.waitForTimeout(250);
+      const y1 = await page.evaluate(() => window.scrollY);
+      assert(Math.abs(y1 - y0) < 6, `прокрутка не прыгает после отметки (${y0} → ${y1})`);
+      continue;
+    }
+    if (await page.locator('section[data-class="2026-2027:7A"] .round-row').count() <= i) break;
+    await row.locator(`button.rp-${places[i % 3]}`).click();
+  }
+  await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="true"]');
+  eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(217, 240, 219)', 'цвет зелёный');
+  await page.waitForSelector('button.round-head[data-class="2026-2027:7A"][aria-expanded="false"]');
+  eq(await page.locator('section.round-class[data-done="true"]').count(), 1, 'готов ровно один класс');
+  eq(await state(page, "S.rounds.filter(r => r.classId === '2026-2027:7A').length"), n, 'отметки записаны в базу');
+  assert((await page.textContent('.pagehead .sub')).includes('готово классов: 1 из 15'), 'заголовок: готово классов');
+
+  // снять отметку — класс снова серый; повторное касание того же места снимает
+  await page.click('button.round-head[data-class="2026-2027:7A"]');
+  await page.locator('section[data-class="2026-2027:7A"] .round-row').first().locator('button[aria-pressed="true"]').click();
+  await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="false"]');
+  eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(233, 236, 240)', 'серый');
+  await page.locator('section[data-class="2026-2027:7A"] .round-row').first().locator('button.rp-sleeping').click();
+  await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="true"]');
+
+  // массовая отметка в 7B: «Всем неотмеченным: Ночует»
+  await page.click('button.round-head[data-class="2026-2027:7B"]');
+  await page.locator('section[data-class="2026-2027:7B"] .rp-sick').first().click();
+  await page.waitForSelector('section[data-class="2026-2027:7B"] button[aria-pressed="true"].rp-sick');
+  await page.click('button[data-bulk="2026-2027:7B"]');
+  await page.waitForSelector('section[data-class="2026-2027:7B"][data-done="true"]');
+  eq(await state(page, "S.rounds.filter(r => r.classId === '2026-2027:7B' && r.place === 'sick').length"), 1, 'ранее выбранное «Болеет» не затёрто');
+
+  // фильтр
+  await page.check('.round-only input');
+  eq(await page.locator('section.round-class[data-done="true"]').count(), 0, 'готовые классы скрыты фильтром');
+  eq(await page.locator('section.round-class').count(), 13, 'остались неготовые');
+  await page.uncheck('.round-only input');
+
+  // сохранение после перезагрузки
+  const total = await state(page, 'S.rounds.length');
+  await page.reload();
+  await page.waitForSelector('section.round-class');
+  eq(await state(page, 'S.rounds.length'), total, 'отметки сохранились');
+  eq(await page.locator('section.round-class[data-done="true"]').count(), 2, 'зелёные классы после перезагрузки');
+  // пункт меню на телефоне
+  await page.click('#menuBtn');
+  await page.waitForSelector('#nav a[data-route=rounds]', { state: 'visible' });
+  await page.waitForTimeout(250);
+  const navH = await page.$eval('#nav a[data-route=rounds]', (e) => e.getBoundingClientRect().height);
+  assert(navH >= 44, `пункт меню крупный (${navH})`);
+}, { viewport: { width: 375, height: 812 } });
+
 await scenario('Экспорт JSON, очистка, восстановление из файла и из копии в браузере, CSV-экспорт', async (page) => {
   await loadDemo(page);
   const total = await state(page, 'S.students.length');
@@ -682,7 +763,7 @@ await scenario('Google Таблицы: проверка, выгрузка (ст�
   const p = posts[0];
   eq(p.type, 'lyceum-sync', 'тип');
   eq(p.token, 'секретный-токен', 'токен');
-  eq(Object.keys(p.sheets).join(','), 'Ученики,Классы,Учителя,Воспитатели,Отчёт,Архив,История', 'листы');
+  eq(Object.keys(p.sheets).join(','), 'Ученики,Классы,Учителя,Воспитатели,Отчёт,Архив,История,Вечерний обход', 'листы');
   eq(p.sheets['Ученики'].rows.length, await state(page, 'S.students.length'), 'строк учеников');
   eq(p.sheets['Классы'].rows.length, 15, 'строк классов');
   assert(JSON.parse(p.backup).format === 'lyceum-registry' && !p.backup.includes('секретный-токен'), 'резервная копия без токена');

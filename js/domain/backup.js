@@ -1,5 +1,5 @@
 // Полная резервная копия: экспорт, проверка, сравнение.
-import { DATA_STORES, SCHEMA_VERSION } from './state.js';
+import { DATA_STORES, OPTIONAL_STORES, SCHEMA_VERSION } from './state.js';
 
 export const FORMAT = 'lyceum-registry';
 
@@ -11,7 +11,7 @@ export function exportData(state, { now = new Date().toISOString() } = {}) {
   void liveRev;
   void liveOutbox;
   const out = { format: FORMAT, version: SCHEMA_VERSION, exportedAt: now, app: 'Учёт лицея 1.0', settings };
-  for (const s of DATA_STORES) out[s] = state[s].map((x) => ({ ...x }));
+  for (const s of DATA_STORES) out[s] = (state[s] || []).map((x) => ({ ...x }));
   return out;
 }
 
@@ -22,7 +22,10 @@ export function validateBackup(data) {
   if (data.format !== FORMAT) errors.push('Это не резервная копия «Учёта лицея» (неверное поле format)');
   if (typeof data.version !== 'number') errors.push('Не указана версия формата');
   else if (data.version > SCHEMA_VERSION) errors.push(`Копия создана более новой версией (формат ${data.version}). Обновите сайт.`);
-  for (const s of DATA_STORES) if (!Array.isArray(data[s])) errors.push(`Раздел «${s}» отсутствует или не является списком`);
+  for (const s of DATA_STORES) {
+    if (OPTIONAL_STORES.includes(s) && data[s] === undefined) continue;
+    if (!Array.isArray(data[s])) errors.push(`Раздел «${s}» отсутствует или не является списком`);
+  }
   if (!data.settings || typeof data.settings !== 'object') errors.push('Отсутствуют настройки');
   if (errors.length) return { ok: false, errors, warnings };
 
@@ -33,7 +36,7 @@ export function validateBackup(data) {
   const staff = ids(data.staff);
   for (const s of DATA_STORES) {
     const seen = new Set();
-    for (const r of data[s]) {
+    for (const r of data[s] || []) {
       if (!r || typeof r.id !== 'string') {
         errors.push(`«${s}»: запись без id`);
         break;
@@ -57,7 +60,7 @@ export function validateBackup(data) {
     if (!classes.has(a.classId)) errors.push(`Назначение ${a.id}: нет класса`);
   }
   if (errors.length > 20) errors.splice(20, errors.length, `…и ещё ошибок: ${errors.length - 20}`);
-  return { ok: errors.length === 0, errors, warnings, counts: Object.fromEntries(DATA_STORES.map((s) => [s, data[s].length])) };
+  return { ok: errors.length === 0, errors, warnings, counts: Object.fromEntries(DATA_STORES.map((s) => [s, (data[s] || []).length])) };
 }
 
 // Для сравнения экспортов в тестах: убираем метки времени.
@@ -72,6 +75,6 @@ export function canonicalForCompare(data) {
     return v;
   };
   const c = strip(data);
-  for (const k of ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments']) c[k].sort((a, b) => (a.id < b.id ? -1 : 1));
+  for (const k of ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments', 'rounds']) c[k].sort((a, b) => (a.id < b.id ? -1 : 1));
   return c;
 }

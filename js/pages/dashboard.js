@@ -6,6 +6,8 @@ import { confirmAction } from '../ui/modal.js';
 import { yearView, staffCounts } from '../domain/stats.js';
 import { nStudents, nClasses } from '../domain/plural.js';
 import { loadDemo } from '../services/demo.js';
+import { roundView } from '../domain/rounds.js';
+import { todayISO } from '../domain/dates.js';
 
 export const title = 'Главная';
 
@@ -22,6 +24,14 @@ export function render(ctx) {
     sub: `${s.settings.lyceumName} · учебный год ${yl(yid)}`,
     actions: [link('Начать новый учебный год', '#/new-year', 'primary')],
   }));
+
+  if (v.total > 0) {
+    const r = roundView(s, todayISO());
+    el.append(h('div', { class: 'card round-dash', style: 'margin-bottom:12px' },
+      h('h2', null, 'Вечерний обход'),
+      h('p', { class: 'muted' }, `Сегодня отмечено ${r.totals.marked} из ${r.totals.total} · готово классов: ${r.doneClasses} из ${r.groups.length}`),
+      link(r.totals.marked === r.totals.total ? 'Открыть обход' : 'Перейти к обходу', '#/rounds', 'primary')));
+  }
 
   const alerts = [];
   if (repo.hasDemo()) {

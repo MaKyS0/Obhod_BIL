@@ -1,0 +1,147 @@
+// Вечерний обход: модель, запись, хранение трёх дней, совместимость со старыми копиями, общая база.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeEnv, seed } from './helpers.mjs';
+import { roundView, shiftDate, earliestRoundDate, ROUND_PLACES } from '../../js/domain/rounds.js';
+import { exportData, validateBackup } from '../../js/domain/backup.js';
+import { isUsableSnapshot } from '../../js/domain/live.js';
+import { todayISO } from '../../js/domain/dates.js';
+import { buildSheetsPayload } from '../../js/domain/sheets-payload.js';
+import { makeSandbox, call as callGas, run } from '../helpers/gas-sandbox.mjs';
+import { createLive } from '../../js/services/live.js';
+
+const today = todayISO();
+
+test('обход: три места, класс «готов» только когда отмечены все', async () => {
+  assert.deepEqual(ROUND_PLACES.map((p) => p.label), ['Болеет', 'С дома', 'Ночует']);
+  const env = await makeEnv();
+  await seed(env, 2);
+  let v = roundView(env.S(), today);
+  assert.equal(v.groups.length, 15);
+  assert.equal(v.totals.total, 30);
+  assert.equal(v.doneClasses, 0);
+  const g = v.groups[0];
+  await env.repo.setRound(g.students[0].student.id, today, 'sleeping');
+  v = roundView(env.S(), today);
+  assert.equal(v.groups[0].marked, 1);
+  assert.equal(v.groups[0].done, false, 'отмечен один из двух — класс ещё серый');
+  await env.repo.setRound(g.students[1].student.id, today, 'sick');
+  v = roundView(env.S(), today);
+  assert.equal(v.groups[0].done, true, 'отмечены все — класс зелёный');
+  assert.equal(v.doneClasses, 1);
+  assert.deepEqual(v.totals.byPlace, { sick: 1, home: 0, sleeping: 1 });
+  // повторное нажатие на то же место снимает отметку
+  await env.repo.setRound(g.students[1].student.id, today, null);
+  assert.equal(roundView(env.S(), today).groups[0].done, false);
+  // отметка на другую дату не влияет на сегодняшнюю
+  assert.equal(roundView(env.S(), shiftDate(today, -1)).totals.marked, 0);
+});
+
+test('обход: групповая отметка, проверки и служебная запись (не считается правкой данных)', async () => {
+  const env = await makeEnv();
+  await seed(env, 3);
+  const g = roundView(env.S(), today).groups[0];
+  const ids = g.students.map((x) => x.student.id);
+  const dirtyBefore = env.S().settings.dirtySinceSync;
+  const n = await env.repo.setRounds(ids, today, 'home');
+  assert.equal(n, 3);
+  assert.equal(roundView(env.S(), today).groups[0].done, true);
+  assert.equal(env.S().settings.dirtySinceSync, dirtyBefore, 'отметки обхода не помечают данные «изменёнными»');
+  await assert.rejects(() => env.repo.setRound(ids[0], today, 'гуляет'), /Неизвестное место/);
+  await assert.rejects(() => env.repo.setRound(ids[0], shiftDate(today, 1), 'home'), /только сегодняшний/);
+  await assert.rejects(() => env.repo.setRound(ids[0], shiftDate(today, -5), 'home'), /только сегодняшний/);
+  await assert.rejects(() => env.repo.setRound('нет-такого', today, 'home'), /не найден/);
+  assert.equal(await env.repo.setRound(ids[0], today, 'home'), 1, 'повтор того же места — запись идемпотентна');
+  assert.equal(env.S().rounds.length, 3);
+});
+
+test('обход: отметки старше трёх дней удаляются сами, чтобы база оставалась лёгкой', async () => {
+  const env = await makeEnv();
+  await seed(env, 1);
+  const sid = env.S().students[0].id;
+  const old = shiftDate(today, -6);
+  await env.store.commit({ put: { rounds: [{ id: `${old}:${sid}`, date: old, studentId: sid, classId: null, place: 'home', updatedAt: '2020-01-01' }] }, del: {} }, { system: true });
+  assert.equal(env.S().rounds.length, 1);
+  await env.repo.setRound(sid, shiftDate(today, -2), 'sick');
+  assert.equal(env.S().rounds.some((r) => r.date === old), false, 'старая отметка удалена');
+  assert.equal(env.S().rounds.length, 1);
+  assert.equal(earliestRoundDate(today), shiftDate(today, -2));
+});
+
+test('обход: экспорт содержит отметки; старые копии без раздела «rounds» принимаются', async () => {
+  const env = await makeEnv();
+  await seed(env, 1);
+  await env.repo.setRound(env.S().students[0].id, today, 'sleeping');
+  const data = exportData(env.S());
+  assert.equal(data.rounds.length, 1);
+  assert.equal(validateBackup(data).ok, true);
+  const legacy = { ...data };
+  delete legacy.rounds;
+  assert.equal(validateBackup(legacy).ok, true, 'копия без обхода — не ошибка');
+  assert.equal(isUsableSnapshot(legacy), true, 'старая общая база без обхода принимается');
+  await env.repo.restoreBackup(legacy);
+  assert.equal(env.S().rounds.length, 0);
+  assert.equal(env.S().students.length, data.students.length);
+});
+
+test('обход: лист «Вечерний обход» в таблице — по классам, с пометкой «не отмечен»', async () => {
+  const env = await makeEnv();
+  await seed(env, 2);
+  const g = roundView(env.S(), today).groups[0];
+  await env.repo.setRound(g.students[0].student.id, today, 'sick');
+  const sheet = buildSheetsPayload(env.S()).sheets['Вечерний обход'];
+  assert.deepEqual(sheet.header, ['Дата', 'Класс', 'Ученик', 'Где']);
+  assert.equal(sheet.rows.length, 30);
+  assert.equal(sheet.rows.filter((r) => r[3] === 'Болеет').length, 1);
+  assert.equal(sheet.rows.filter((r) => r[3] === 'не отмечен').length, 29);
+});
+
+test('обход + общая база: отметка одного видна другому; сервер принимает раздел «rounds»', async () => {
+  globalThis.__LYCEUM_KICK_MS__ = 3600000;
+  globalThis.__LYCEUM_LIVE_MS__ = 3600000;
+  const sb = makeSandbox();
+  const token = run(sb, 'setup()');
+  globalThis.fetch = async (_u, init) => ({ text: async () => run(sb, `doPost(${JSON.stringify({ postData: { contents: init.body } })}).getContent()`) });
+  const mk = async (tokenValue, dev) => {
+    const env = await makeEnv();
+    if (tokenValue) await env.repo.updateSettings({ sheetsToken: tokenValue });
+    return { ...env, live: createLive({ store: env.store, endpoint: 'https://x/exec', getDevice: () => dev }) };
+  };
+  const a = await mk(token, 'a'.repeat(32));
+  await seed(a, 2);
+  await a.live.tick();
+  const hash = (await import('node:crypto')).createHash('sha256').update('b'.repeat(32)).digest('hex');
+  callGas(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action: 'request', deviceHash: hash, name: 'Воспитатель', note: '' }) } });
+  callGas(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action: 'decide', token, id: hash.slice(0, 12), decision: 'allow' }) } });
+  const b = await mk('', 'b'.repeat(32));
+  await b.live.tick();
+  assert.equal(b.S().students.length, 30);
+
+  const g = roundView(b.S(), today).groups[0];
+  await b.repo.setRounds(g.students.map((x) => x.student.id), today, 'sleeping');
+  await b.live.tick();
+  await a.live.tick();
+  assert.equal(roundView(a.S(), today).groups[0].done, true, 'у первого устройства класс стал зелёным');
+  assert.equal(a.S().rounds.length, 2);
+  // сервер хранит раздел «rounds»
+  const server = JSON.parse(callGas(sb, 'doGet', { parameter: { action: 'backup', token } }).backup);
+  assert.equal(server.rounds.length, 2);
+  a.live.stop();
+  b.live.stop();
+});
+
+test('обход + сервер: общая база, созданная до появления обхода, принимает отметки', async () => {
+  const sb = makeSandbox();
+  const token = run(sb, 'setup()');
+  const env = await makeEnv();
+  await seed(env, 1);
+  const legacy = exportData(env.S());
+  delete legacy.rounds;
+  const seedRes = callGas(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'live', action: 'seed', token, data: legacy }) } });
+  assert.equal(seedRes.ok, true);
+  const sid = env.S().students[0].id;
+  const r = callGas(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'live', action: 'push', token, baseRev: 1, batches: [{ put: { rounds: [{ id: `${today}:${sid}`, date: today, studentId: sid, place: 'home' }] }, del: {}, clear: [], settings: {} }] }) } });
+  assert.equal(r.applied, 1);
+  const server = JSON.parse(callGas(sb, 'doGet', { parameter: { action: 'backup', token } }).backup);
+  assert.equal(server.rounds.length, 1);
+});

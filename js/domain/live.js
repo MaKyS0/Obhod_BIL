@@ -1,5 +1,5 @@
 // Общая база: чистые функции (без сети и без хранилища). Те же правила применяет сервер (Code.gs → applyChanges_).
-import { DATA_STORES, SHARED_SETTINGS, applyChanges, emptyState, invalidate } from './state.js';
+import { DATA_STORES, OPTIONAL_STORES, SHARED_SETTINGS, applyChanges, emptyState, invalidate } from './state.js';
 import { FORMAT } from './backup.js';
 
 const pick = (obj, keys) => {
@@ -35,7 +35,7 @@ export function applyBatch(state, batch) {
 export function isUsableSnapshot(data) {
   if (!data || typeof data !== 'object' || data.format !== FORMAT) return false;
   if (typeof data.version !== 'number') return false;
-  for (const s of DATA_STORES) if (!Array.isArray(data[s])) return false;
+  for (const s of DATA_STORES) if (!Array.isArray(data[s]) && !(OPTIONAL_STORES.includes(s) && data[s] === undefined)) return false;
   const st = data.settings;
   return !!(st && typeof st === 'object' && typeof st.currentYearId === 'string' && data.years.some((y) => y.id === st.currentYearId));
 }
@@ -44,7 +44,7 @@ export function isUsableSnapshot(data) {
 export function stateFromSnapshot(snapshot, localSettings, pendingBatches = []) {
   const next = emptyState();
   next.settings = { ...localSettings, ...pick(snapshot.settings, SHARED_SETTINGS) };
-  for (const s of DATA_STORES) next[s] = snapshot[s].map((x) => ({ ...x }));
+  for (const s of DATA_STORES) next[s] = (snapshot[s] || []).map((x) => ({ ...x }));
   for (const b of pendingBatches) applyBatch(next, b);
   invalidate(next);
   return next;

@@ -71,3 +71,10 @@ body.gated main { max-width: 560px; margin: 0 auto; padding-top: 12vh; }
 .gate-card p { margin-bottom: 12px; }
 .gate-card form + p { margin-top: 12px; }
 .gate-owner { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
+
+/* Телефон: удобные крупные пункты меню и компактная шапка */
+@media (max-width: 639px) {
+  #nav a { padding: 14px 14px; font-size: 16px; }
+  .pagehead h1 { font-size: 20px; }
+  .topbar { position: static; } /* на телефоне шапка не липнет: больше места под список */
+}
