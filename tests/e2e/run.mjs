@@ -764,6 +764,66 @@ await scenario('Анимации и подпись разработчика: в�
   await page.waitForFunction(() => document.querySelectorAll('.toast').length === 0, null, { timeout: 2500 });
 }, { init: 'window.__LYCEUM_ANIMATE__ = true;' });
 
+await scenario('Тёмная тема: кнопка в шапке и выбор в Настройках, «как в системе», сохранение без мигания, контраст, печать остаётся светлой', async (page) => {
+  const theme = () => page.evaluate(() => [document.documentElement.dataset.theme, document.documentElement.dataset.themePref]);
+  const bg = (sel) => page.$eval(sel, (e) => getComputedStyle(e).backgroundColor);
+  await open(page, '#/');
+  assert((await theme()).join() === 'light,auto', 'по умолчанию «как в системе» → светлая');
+  eq(await bg('body'), 'rgb(244, 245, 247)', 'светлый фон');
+  // кнопка в шапке: как в системе → светлая → тёмная → как в системе
+  await page.click('#themeBtn');
+  assert((await theme()).join() === 'light,light', 'первое нажатие: светлая');
+  await page.click('#themeBtn');
+  assert((await theme()).join() === 'dark,dark', 'второе нажатие: тёмная');
+  eq(await bg('body'), 'rgb(15, 22, 32)', 'тёмный фон');
+  assert((await page.getAttribute('meta[name=theme-color]', 'content')) === '#0c121a', 'цвет адресной строки браузера');
+  // сохранение: после перезагрузки тема уже применена в самом начале (до отрисовки страницы)
+  await page.reload({ waitUntil: 'commit' });
+  await page.waitForSelector('h1');
+  assert((await theme()).join() === 'dark,dark', 'тема сохранилась');
+  const early = await page.evaluate(() => performance.getEntriesByType('navigation').length >= 0 && document.documentElement.dataset.theme);
+  eq(early, 'dark', 'тёмная с первого кадра');
+
+  // контраст ключевых элементов не ниже 4.5:1 (WCAG AA)
+  await loadDemo(page);
+  await go(page, '#/');
+  await page.waitForSelector('.stat .label');
+  const ratios = await page.evaluate(() => {
+    const parse = (c) => (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+    const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const ratio = (a, b) => { const [x, y] = [lum(parse(a)), lum(parse(b))]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const pair = (sel, bgSel) => { const e = document.querySelector(sel); const b = document.querySelector(bgSel || sel); return [sel, ratio(getComputedStyle(e).color, getComputedStyle(b).backgroundColor)]; };
+    return [pair('.card h2', '.card'), pair('.card .muted', '.card'), pair('.btn-primary'), pair('.stat .label', '.stat'), pair('#nav a[aria-current=page]', '.sidebar'), pair('.pagehead .sub', 'body'), pair('table.data td', 'table.data')].filter(Boolean);
+  });
+  for (const [sel, r] of ratios) assert(r >= 4.5, `контраст ${sel}: ${r.toFixed(2)} < 4.5`);
+  // печать всегда светлая
+  await page.emulateMedia({ media: 'print' });
+  eq(await bg('body'), 'rgb(255, 255, 255)', 'печать белая даже в тёмной теме');
+  await page.emulateMedia({ media: 'screen' });
+
+  // выбор в Настройках: три варианта, нажатое подсвечено
+  await go(page, '#/settings');
+  await page.waitForSelector('.theme-opt');
+  eq(await page.locator('.theme-opt').count(), 3, 'три варианта темы');
+  eq(await page.getAttribute('[data-theme-opt=dark]', 'aria-pressed'), 'true', 'выбрана тёмная');
+  await page.click('[data-theme-opt=light]');
+  assert((await theme()).join() === 'light,light', 'выбор светлой');
+  eq(await page.getAttribute('[data-theme-opt=light]', 'aria-pressed'), 'true', 'подсветка варианта');
+  // «как в системе» следует за системой
+  await page.click('[data-theme-opt=auto]');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+  // графики и обход в тёмной теме открываются без ошибок
+  await page.click('[data-theme-opt=dark]');
+  await go(page, '#/');
+  await page.waitForSelector('canvas');
+  await go(page, '#/rounds');
+  await page.waitForSelector('section.round-class');
+  assert((await bg('section.round-class')) !== 'rgb(233, 236, 240)', 'классы обхода перекрашены в тёмной теме');
+});
+
 await scenario('Экспорт JSON, очистка, восстановление из файла и из копии в браузере, CSV-экспорт', async (page) => {
   await loadDemo(page);
   const total = await state(page, 'S.students.length');

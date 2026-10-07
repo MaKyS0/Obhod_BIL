@@ -15,7 +15,9 @@
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/pages.css">
   <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/dark.css">
   <link rel="stylesheet" href="css/print.css" media="print">
+  <script src="js/theme-init.js"></script>
   <script src="vendor/chart.umd.min.js" defer></script>
   <script type="module" src="js/app.js"></script>
 </head>
@@ -52,6 +54,7 @@
           <input id="globalSearch" type="search" placeholder="Поиск: ученик, учитель, класс…" enterkeyhint="search">
         </form>
         <span class="year-badge" id="yearBadge" title="Текущий учебный год"></span>
+        <button class="theme-btn" id="themeBtn" type="button" aria-label="Тема оформления"></button>
         <button class="sync-status" id="syncStatus" type="button"></button>
       </header>
       <div id="banner" class="banners"></div>

@@ -15,7 +15,9 @@ export function barChart({ labels, data, label = 'Учеников', horizontal 
   }
   const canvas = h('canvas', { role: 'img', 'aria-label': `${title}: ${labels.map((l, i) => `${l} — ${data[i]}`).join(', ')}` });
   box.appendChild(canvas);
-  const primary = css('--primary', '#1f4e79');
+  const primary = css('--chart-bar', css('--primary', '#1f4e79'));
+  const grid = css('--chart-grid', '#e6e9ee');
+  const text = css('--chart-text', '#5a6473');
   const chart = new window.Chart(canvas, {
     type: 'bar',
     data: { labels, datasets: [{ label, data, backgroundColor: primary, borderRadius: 2, maxBarThickness: horizontal ? 18 : 48 }] },
@@ -26,8 +28,8 @@ export function barChart({ labels, data, label = 'Учеников', horizontal 
       animation: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${label}: ${c.parsed[horizontal ? 'x' : 'y']}` } } },
       scales: {
-        [horizontal ? 'x' : 'y']: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#e6e9ee' } },
-        [horizontal ? 'y' : 'x']: { grid: { display: false } },
+        [horizontal ? 'x' : 'y']: { beginAtZero: true, ticks: { precision: 0, color: text }, grid: { color: grid } },
+        [horizontal ? 'y' : 'x']: { grid: { display: false }, ticks: { color: text } },
       },
     },
   });

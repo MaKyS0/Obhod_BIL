@@ -12,6 +12,7 @@ import { validateBackup } from '../domain/backup.js';
 import { formatDateTime } from '../domain/dates.js';
 import { yearLabel } from '../domain/years.js';
 import { nStudents } from '../domain/plural.js';
+import { THEMES, getPref, setPref } from '../ui/theme.js';
 
 export const title = 'Настройки';
 
@@ -34,6 +35,12 @@ export async function render(ctx) {
         toast('Настройки сохранены');
       } catch (e) { toastError(e); }
     }, 'primary'))));
+
+  // ---- Оформление ----
+  const picker = h('div', { class: 'theme-picker', role: 'group', 'aria-label': 'Тема оформления' });
+  const paintPicker = () => picker.replaceChildren(...THEMES.map((t) => h('button', { type: 'button', class: 'theme-opt', 'aria-pressed': getPref() === t.key ? 'true' : 'false', 'data-theme-opt': t.key, onclick: () => { setPref(t.key); paintPicker(); } }, h('span', { class: 'ti', 'aria-hidden': 'true' }, t.icon), t.label)));
+  paintPicker();
+  el.append(h('div', { class: 'card' }, h('h2', null, 'Оформление'), h('p', { class: 'muted' }, 'Тёмная тема бережёт глаза вечером. «Как в системе» следует настройке телефона или компьютера. Выбор хранится в этом браузере.'), picker));
 
   // ---- Допуск посетителей ----
   el.append(h('div', { class: 'card' }, h('h2', null, 'Допуск посетителей'),

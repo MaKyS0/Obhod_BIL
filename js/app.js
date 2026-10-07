@@ -27,6 +27,7 @@ import { accessEndpoint } from './config.js';
 import { runGate, watchAccess } from './ui/gate.js';
 import { listRequests } from './services/access.js';
 import { enterPage, countUp } from './ui/anim.js';
+import { THEMES, getPref, cyclePref, onThemeChange } from './ui/theme.js';
 
 // Автотесты (WebDriver) работают без анимации: так проверки не зависят от движения элементов. Включить — window.__LYCEUM_ANIMATE__ = true.
 if (navigator.webdriver && window.__LYCEUM_ANIMATE__ !== true) document.documentElement.classList.add('no-anim');
@@ -137,6 +138,21 @@ async function main() {
   $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); goSearch(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') && !document.querySelector('dialog[open]')) { e.preventDefault(); searchInput.focus(); }
+  });
+
+  // Тема: кнопка в шапке по кругу переключает «как в системе» → светлая → тёмная; выбор — также в Настройках.
+  const themeBtn = $('#themeBtn');
+  const paintTheme = () => {
+    const t = THEMES.find((x) => x.key === getPref());
+    themeBtn.textContent = t.icon;
+    themeBtn.title = `Тема: ${t.label}. Нажмите, чтобы сменить`;
+    themeBtn.setAttribute('aria-label', `Тема оформления: ${t.label}. Нажмите, чтобы сменить`);
+  };
+  themeBtn.addEventListener('click', cyclePref);
+  paintTheme();
+  onThemeChange(() => {
+    paintTheme();
+    if (['dashboard', 'reports'].includes(router.current?.name)) router.refresh(); // графики берут цвета из темы
   });
 
   const syncBtn = $('#syncStatus');
