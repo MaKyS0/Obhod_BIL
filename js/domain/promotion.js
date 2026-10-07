@@ -197,7 +197,7 @@ export function planUndo(state, now = new Date().toISOString()) {
   let deletedStudents = 0;
   for (const st of state.students) {
     const list = idx.enrollmentsByStudent.get(st.id) || [];
-    if (list.length && list.every((e) => e.yearId === to) && st.createdAt > p.executedAt) {
+    if (list.length && list.every((e) => e.yearId === to) && st.createdAt >= p.executedAt) {
       addDel(changes, 'students', st.id);
       deletedStudents++;
     }
