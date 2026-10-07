@@ -64,7 +64,6 @@
   html[data-theme="dark"] .round-progress > i { background: #4cb052; }
   html[data-theme="dark"] .rc-home, html[data-theme="dark"] .round-class .round-class-name { color: var(--text); }
   html[data-theme="dark"] .round-class[data-done="true"] .round-class-name { color: var(--success); }
-  html[data-theme="dark"] .rc-home { border-left-color: #c98a14; }
   html[data-theme="dark"] input::-webkit-calendar-picker-indicator { filter: invert(.8); }
 }
 

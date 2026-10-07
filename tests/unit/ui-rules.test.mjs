@@ -47,3 +47,15 @@ test('интерфейс: цвета в компонентах берутся и
   // допустимо ограниченное число служебных оттенков (тосты, предупреждающий акцент, плейсхолдер); новые «случайные» цвета ловит тест
   assert.ok(hits.length <= 14, `слишком много «голых» цветов (${hits.length}): ${hits.join(', ')}`);
 });
+
+test('интерфейс: нет «ленивых» цветных полосок с одного края блока (border-left/top толще 1px) и градиентов/стекла', () => {
+  const hits = [];
+  for (const f of files('css')) {
+    fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').forEach((line, i) => {
+      if (/^\s*\/\*/.test(line)) return;
+      if (/border-(left|right|top)(-width)?:\s*[2-9]px(?!\s*solid\s*transparent)/.test(line) && !/border-(left|right|top):\s*[2-9]px solid transparent/.test(line)) hits.push(`${f}:${i + 1} полоска с края`);
+      if (/gradient\(|backdrop-filter/.test(line)) hits.push(`${f}:${i + 1} градиент/стекло`);
+    });
+  }
+  assert.deepEqual(hits, []);
+});

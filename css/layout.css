@@ -41,15 +41,14 @@
 #nav a:hover .ico { color: var(--side-text); }
 #nav a[aria-current="page"] { background: var(--side-active); color: var(--text); font-weight: 600; }
 #nav a[aria-current="page"] .ico { color: var(--primary); }
-#nav a[aria-current="page"]::before { content: ""; position: absolute; left: -8px; top: 5px; bottom: 5px; width: 3px; border-radius: 0 2px 2px 0; background: var(--primary); }
 .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-n { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--side-muted); font-variant-numeric: tabular-nums; }
 .nav-n:empty { display: none; }
 .nav-count { min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--primary); color: #fff; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; }
 .nav-count:empty { display: none; }
 .sidebar-foot { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 12px; color: var(--side-muted); border-top: 1px solid var(--side-border); line-height: 1.35; }
-.sidebar-foot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--success); }
-.sidebar-foot[data-bad]::before { background: var(--danger); }
+.sidebar-foot[data-bad] { color: var(--danger); }
+.sidebar-foot[data-bad]::before { content: ""; width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--danger); }
 
 .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar {
@@ -99,7 +98,6 @@ main { padding: 18px 28px 36px; max-width: 1280px; width: 100%; outline: none; f
   .nav-group + .nav-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--side-border); }
   .nav-group:first-child a { font-weight: 400; }
   #nav a { justify-content: center; padding: 0; min-height: 40px; }
-  #nav a[aria-current="page"]::before { left: -6px; }
   .nav-count { position: absolute; top: 3px; right: 3px; min-width: 15px; line-height: 15px; font-size: 10px; padding: 0 3px; }
   .topbar { padding: 0 16px; }
   main { padding: 18px 20px 36px; }
