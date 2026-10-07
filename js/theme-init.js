@@ -8,6 +8,8 @@
   root.dataset.theme = dark ? 'dark' : 'light';
   root.dataset.themePref = pref;
   root.style.colorScheme = dark ? 'dark' : 'light';
+  // Автотесты (WebDriver) работают без анимации; экран загрузки скрывается сразу. Включить — window.__LYCEUM_ANIMATE__ = true.
+  if (navigator.webdriver && window.__LYCEUM_ANIMATE__ !== true) root.classList.add('no-anim');
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', dark ? '#0c121a' : '#1f4e79');
 })();

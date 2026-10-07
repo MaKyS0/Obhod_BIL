@@ -16,11 +16,7 @@
   scrollbar-width: thin;
 }
 .brand { display: flex; align-items: center; gap: 10px; height: var(--topbar-h); flex: none; padding: 0 14px; border-bottom: 1px solid var(--side-border); text-decoration: none; color: inherit; }
-.brand-mark {
-  width: 30px; height: 30px; flex: none; display: grid; place-items: center;
-  background: var(--primary); color: #fff; border-radius: var(--radius);
-  font: 700 15px/1 var(--font); letter-spacing: -.02em;
-}
+.brand-mark { width: 30px; height: 30px; flex: none; }
 .brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 .brand-text strong { font-size: 14px; font-weight: 650; color: var(--text); white-space: nowrap; }
 .brand-text small { color: var(--side-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

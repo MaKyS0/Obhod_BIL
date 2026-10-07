@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ICON_NAMES } from '../../js/ui/icons.js';
+import { LOGO_ORNAMENT, LOGO_BIRD } from '../../js/ui/logo.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const files = (dir) => fs.readdirSync(path.join(ROOT, dir), { recursive: true }).filter((f) => /\.(js|html|css)$/.test(f)).map((f) => path.join(dir, f));
@@ -58,4 +59,13 @@ test('интерфейс: нет «ленивых» цветных полосо�
     });
   }
   assert.deepEqual(hits, []);
+});
+
+test('логотип: эмблема на экране загрузки (index.html) и в js/ui/logo.js одна и та же', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const splash = html.slice(html.indexOf('<svg class="splash-logo'), html.indexOf('</svg>', html.indexOf('<svg class="splash-logo')));
+  const orn = [...splash.matchAll(/class="lg-orn o\d+" d="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(orn, LOGO_ORNAMENT);
+  assert.equal(/class="lg-bird" d="([^"]+)"/.exec(splash)[1], LOGO_BIRD);
+  assert.equal(LOGO_ORNAMENT.length, 10);
 });

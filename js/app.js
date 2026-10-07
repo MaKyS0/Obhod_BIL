@@ -29,6 +29,8 @@ import { listRequests } from './services/access.js';
 import { enterPage, countUp } from './ui/anim.js';
 import { THEMES, getPref, cyclePref, onThemeChange } from './ui/theme.js';
 import { icon } from './ui/icons.js';
+import { createSplash } from './ui/splash.js';
+import { logoMark } from './ui/logo.js';
 import { yearView } from './domain/stats.js';
 
 // Автотесты (WebDriver) работают без анимации: так проверки не зависят от движения элементов. Включить — window.__LYCEUM_ANIMATE__ = true.
@@ -71,15 +73,19 @@ function buildNav(nav) {
 const DAY = 24 * 3600 * 1000;
 
 async function main() {
+  const splash = createSplash();
   // Защита от кликджекинга: страница не работает внутри чужого <iframe> (заголовок frame-ancestors на GitHub Pages задать нельзя).
   if (window.top !== window.self) {
+    document.getElementById('splash')?.remove();
     document.body.replaceChildren(Object.assign(document.createElement('p'), { textContent: 'Сайт нельзя открывать внутри другой страницы. Откройте его напрямую.' }));
     return;
   }
   const view = $('#view');
   let versionBanner = false;
+  splash.status('Открываем хранилище…');
   const db = await openDb({ onVersionChange: () => { versionBanner = true; updateChrome(); } });
   const store = createStore(db);
+  splash.status('Читаем данные…');
   await store.load();
   const repo = createRepo(store);
   await repo.initialize();
@@ -90,7 +96,7 @@ async function main() {
   const access = { endpoint, owner: !endpoint, pending: 0, onPending: null };
   let live = null;
   if (endpoint) {
-    const { role } = await runGate({ endpoint, store, repo, db, view });
+    const { role } = await runGate({ endpoint, store, repo, db, view, onShown: () => splash.hide() });
     access.owner = role === 'owner';
     if (access.owner) document.body.dataset.owner = '1';
     else watchAccess(endpoint);
@@ -102,6 +108,7 @@ async function main() {
       onForbidden: () => location.reload(), // доступ закрыт — экран допуска сотрёт локальные данные
       onConflict: () => toast('Часть ваших изменений не применена: те же данные (например, учебный год) успел изменить другой пользователь. Экран обновлён.', 'error'),
     });
+    splash.status('Подключаем общую базу…');
     const firstJoin = store.state.settings.liveRev == null;
     if (firstJoin) view.replaceChildren(h('p', { class: 'loading' }, 'Загрузка общих данных…'));
     await live.start({ wait: firstJoin });
@@ -111,6 +118,7 @@ async function main() {
   if (access.owner) document.body.dataset.owner = '1'; // без допуска (локальный режим) пользователь — сам себе владелец
 
   buildNav($('#nav'));
+  $('#brandMark').appendChild(logoMark(30));
   $('#menuBtn').appendChild(icon('menu', 18));
   $('#searchForm').prepend(icon('search', 16));
 
@@ -247,13 +255,16 @@ async function main() {
   }
 
   window.__lyceum = { store, repo, router };
+  splash.status('Готовим страницы…');
   await router.start();
   updateChrome();
+  splash.hide();
   if (!live) startAutoSync(store, repo); // с общей базой отдельная выгрузка не нужна: сервер сам хранит актуальную версию
 }
 
 main().catch((e) => {
   console.error(e);
+  document.getElementById('splash')?.remove(); // сообщение об ошибке не должно прятаться под экраном загрузки
   const view = document.getElementById('view');
   if (view) {
     const box = document.createElement('div');

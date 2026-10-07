@@ -1,0 +1,51 @@
+/* Экран загрузки и эмблема БИЛ: птица на книгах (тёмная, в тёмной теме — светлая) и орнамент (золотистый). Цвета — из токенов. */
+.logo { display: block; flex: none; overflow: visible; }
+.lg-bird { fill: var(--logo-ink); }
+.lg-orn { fill: var(--logo-gold); }
+
+.splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--bg); color: var(--text); animation: sp-failsafe .4s ease 15s forwards; }
+.splash-inner { display: flex; flex-direction: column; align-items: center; padding: 24px; text-align: center; }
+.splash-logo { margin-bottom: 26px; }
+.splash-title { font-size: 20px; font-weight: 600; letter-spacing: .02em; }
+.splash-sub { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.splash-bar { position: relative; width: 168px; height: 2px; margin-top: 26px; background: var(--border); overflow: hidden; }
+.splash-bar i { position: absolute; top: 0; bottom: 0; left: 0; width: 38%; background: var(--primary); }
+.splash-status { min-height: 1.4em; margin-top: 10px; font-size: 12px; color: var(--muted); }
+
+/* Анимация: орнамент «распускается» по кусочкам от центра, птица влетает по диагонали вдоль книг и зависает с лёгким покачиванием;
+   затем проявляются название, подпись и полоса загрузки; в конце экран уезжает вверх, как занавес. */
+@keyframes sp-orn { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: none; } }
+@keyframes sp-bird { from { opacity: 0; transform: translate(-22px, 22px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes sp-float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(1.5px, -3px); } }
+@keyframes sp-title { from { opacity: 0; letter-spacing: .2em; transform: translateY(6px); } to { opacity: 1; letter-spacing: .02em; transform: none; } }
+@keyframes sp-sub { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes sp-bar { from { transform: translateX(-100%); } to { transform: translateX(450%); } }
+@keyframes sp-out { to { transform: translateY(-100%); } }
+@keyframes sp-inner-out { to { opacity: 0; transform: scale(.96); } }
+@keyframes sp-failsafe { to { transform: translateY(-100%); visibility: hidden; } }
+
+.splash .lg-orn { transform-box: fill-box; transform-origin: center; opacity: 0; animation: sp-orn .55s var(--ease) both; }
+.splash .o9 { animation-delay: .1s; }
+.splash .o5 { animation-delay: .22s; }
+.splash .o6 { animation-delay: .3s; }
+.splash .o2 { animation-delay: .38s; }
+.splash .o3 { animation-delay: .44s; }
+.splash .o10 { animation-delay: .5s; }
+.splash .o1 { animation-delay: .56s; }
+.splash .o4 { animation-delay: .62s; }
+.splash .o7 { animation-delay: .68s; }
+.splash .o8 { animation-delay: .74s; }
+.splash .lg-bird { opacity: 0; animation: sp-bird .75s var(--ease) .55s both, sp-float 3.4s ease-in-out 1.5s infinite; }
+.splash-title { animation: sp-title .6s var(--ease) 1s both; }
+.splash-sub { animation: sp-sub .5s var(--ease) 1.25s both; }
+.splash-bar { animation: fade .3s ease .6s both; }
+.splash-bar i { animation: sp-bar 1.3s linear .6s infinite; }
+.splash-status { animation: fade .3s ease .9s both; }
+
+.splash.leaving { pointer-events: none; animation: sp-out .5s var(--ease) forwards; }
+.splash.leaving .splash-inner { animation: sp-inner-out .3s ease forwards; }
+
+/* Без анимации (автотесты, «уменьшить движение») экран загрузки не показывается вовсе */
+html.no-anim .splash { display: none; }
+@media (prefers-reduced-motion: reduce) { .splash { display: none; } }
+@media print { .splash { display: none; } }

@@ -11,6 +11,8 @@
     --text-2: #b4c0ce;
     --muted: #8d9bad;
 
+    --logo-ink: #dfe8f5;
+    --logo-gold: #a8916c;
     --primary: #6fb0ea;
     --primary-hover: #93c5f0;
     --primary-weak: #19324b;
@@ -45,7 +47,6 @@
   html[data-theme="dark"] ::-webkit-scrollbar { width: 12px; height: 12px; }
   html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; border: 3px solid var(--bg); }
   html[data-theme="dark"] ::-webkit-scrollbar-track { background: transparent; }
-  html[data-theme="dark"] .brand-mark { background: #2f6fb3; }
   html[data-theme="dark"] .btn-primary, html[data-theme="dark"] .reason-chip.on, html[data-theme="dark"] .rp-sleeping[aria-pressed="true"], html[data-theme="dark"] .nav-count { background: #2f6fb3; border-color: #2f6fb3; color: #fff; }
   html[data-theme="dark"] .btn-primary:hover { background: #3a80c9; border-color: #3a80c9; }
   html[data-theme="dark"] .btn-danger, html[data-theme="dark"] .rp-sick[aria-pressed="true"] { background: #b73a31; border-color: #b73a31; color: #fff; }

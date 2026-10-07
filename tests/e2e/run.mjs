@@ -763,7 +763,7 @@ await scenario('Анимации и подпись разработчика: в�
   while (await closeBtn.count()) await closeBtn.first().click();
   await page.waitForSelector('.toast.out');
   await page.waitForFunction(() => document.querySelectorAll('.toast').length === 0, null, { timeout: 2500 });
-}, { init: 'window.__LYCEUM_ANIMATE__ = true;' });
+}, { init: 'window.__LYCEUM_ANIMATE__ = true; window.__LYCEUM_SPLASH_MS__ = 0;' });
 
 await scenario('Тёмная тема: кнопка в шапке и выбор в Настройках, «как в системе», сохранение без мигания, контраст, печать остаётся светлой', async (page) => {
   const theme = () => page.evaluate(() => [document.documentElement.dataset.theme, document.documentElement.dataset.themePref]);
@@ -882,6 +882,34 @@ await scenario('Интерфейс: меню по группам с иконка
   eq(await page.locator('table.data tbody tr').count(), 15, '15 классов в таблице');
   await page.selectOption('select[aria-label="Параллель"]', '9');
   eq(await page.locator('table.data tbody tr').count(), 3, 'фильтр по параллели');
+});
+
+await scenario('Экран загрузки: эмблема БИЛ (птица на книгах и орнамент) играет анимацию, показывает этапы, убирается сам или по нажатию; в автотестах скрыт', async (page, context) => {
+  // обычный режим автотестов (без анимации): экрана загрузки нет, эмблема стоит в меню
+  await open(page, '');
+  eq(await page.evaluate(() => getComputedStyle(document.getElementById('splash') || document.body).display === 'none' || !document.getElementById('splash')), true, 'без анимации экран загрузки скрыт');
+  eq(await page.locator('#brandMark svg .lg-bird').count(), 1, 'в меню — знак БИЛ (птица на книгах)');
+  // с анимацией: экран виден, эмблема из 10 частей орнамента и птицы
+  const p2 = await context.newPage();
+  await p2.addInitScript('window.__LYCEUM_ANIMATE__ = true; window.__LYCEUM_ACCESS_ENDPOINT__ = "";');
+  await p2.goto(srv.url, { waitUntil: 'commit' });
+  await p2.waitForSelector('#splash .lg-bird', { state: 'attached' });
+  eq(await p2.locator('#splash .lg-orn').count(), 10, 'десять частей орнамента');
+  assert(await p2.evaluate(() => getComputedStyle(document.getElementById('splash')).display !== 'none'), 'экран загрузки виден');
+  eq(await p2.evaluate(() => getComputedStyle(document.querySelector('#splash .lg-bird')).fill), 'rgb(20, 26, 60)', 'птица тёмно-синяя (токен --logo-ink)');
+  await p2.waitForSelector('h1');
+  assert(await p2.locator('#splash').count() === 1, 'экран держится, пока играет анимация');
+  // нажатие пропускает ожидание
+  await p2.mouse.click(300, 300);
+  await p2.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 3000 });
+  // без нажатия экран уходит сам, не позже ~3 с
+  const p3 = await context.newPage();
+  await p3.addInitScript('window.__LYCEUM_ANIMATE__ = true; window.__LYCEUM_ACCESS_ENDPOINT__ = "";');
+  const t0 = Date.now();
+  await p3.goto(srv.url);
+  await p3.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 5000 });
+  const took = Date.now() - t0;
+  assert(took >= 1500 && took < 4000, `экран показан около 2 с (было ${took} мс)`);
 });
 
 await scenario('Аудит интерфейса: шапка и подвал выровнены, показатели в одну строку, счётчики меню, иконки действий, фильтры в строке поиска', async (page) => {

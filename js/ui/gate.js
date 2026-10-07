@@ -2,12 +2,13 @@
 import { h } from './dom.js';
 import { field } from './form.js';
 import { toastError } from './toast.js';
+import { logoMark } from './logo.js';
 import { requestAccess, accessStatus, verifyOwner } from '../services/access.js';
 
 const pollMs = () => (typeof globalThis.__LYCEUM_POLL_MS__ === 'number' ? globalThis.__LYCEUM_POLL_MS__ : 8000);
 
 /** Возвращает Promise<{ role: 'owner' | 'visitor' }> — разрешается, когда вход разрешён. */
-export function runGate({ endpoint, store, repo, db, view }) {
+export function runGate({ endpoint, store, repo, db, view, onShown }) {
   document.body.classList.add('gated');
   return new Promise((resolve) => {
     let timer = null;
@@ -16,7 +17,7 @@ export function runGate({ endpoint, store, repo, db, view }) {
       document.body.classList.remove('gated');
       resolve({ role });
     };
-    const show = (...nodes) => view.replaceChildren(h('div', { class: 'gate' }, h('div', { class: 'card gate-card' }, h('div', { class: 'gate-brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, 'Б'), h('div', { class: 'brand-text' }, h('strong', null, 'Костанай БИЛ'), h('small', null, 'Информационная система лицея'))), nodes)));
+    const show = (...nodes) => { onShown?.(); return view.replaceChildren(h('div', { class: 'gate' }, h('div', { class: 'card gate-card' }, h('div', { class: 'gate-brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, logoMark(30)), h('div', { class: 'brand-text' }, h('strong', null, 'Костанай БИЛ'), h('small', null, 'Информационная система лицея'))), nodes))); };
 
     async function enterAsOwner(token) {
       const r = await verifyOwner(endpoint, token);
