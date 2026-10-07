@@ -83,6 +83,16 @@ function createIdbDb(db, hooks) {
         } else write();
       });
     },
+    // Полное удаление базы (включая резервные копии в браузере) — при отзыве доступа.
+    async wipe() {
+      db.close();
+      await new Promise((res, rej) => {
+        const r = indexedDB.deleteDatabase(DB_NAME);
+        r.onsuccess = () => res();
+        r.onerror = () => rej(r.error);
+        r.onblocked = () => res();
+      });
+    },
     async addBackup(rec) {
       const tx = db.transaction('backups', 'readwrite');
       const id = await reqP(tx.objectStore('backups').add(rec));

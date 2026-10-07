@@ -5,6 +5,10 @@
  * скрипт перезаписывает листы: Ученики, Классы, Учителя, Воспитатели, Отчёт, Архив, История
  * и служебные скрытые листы _Резерв (полная копия базы) и _Журнал.
  *
+ * Второе назначение — ДОПУСК ПОСЕТИТЕЛЕЙ: посетитель сайта отправляет запрос (имя и сообщение), владелец получает
+ * письмо и решает на странице «Доступ» сайта, кого впустить. Скрипт хранит только имя, сообщение и решение;
+ * ключа от зашифрованных данных он НЕ хранит и НЕ выдаёт.
+ *
  * Установка: см. index.html рядом с этим файлом (или раздел «Настройки → Google Таблицы» на сайте).
  * Запустите функцию setup() один раз вручную — она сохранит ID таблицы, создаст токен доступа
  * и ежедневный триггер.
@@ -60,6 +64,7 @@ function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
     var payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (payload.type === 'access') return handleAccess_(payload);
     var denied = checkToken_(payload.token);
     if (denied) return json_({ ok: false, error: denied });
     if (payload.type !== 'lyceum-sync' || !payload.sheets) return json_({ ok: false, error: 'Неверный формат данных' });
@@ -105,6 +110,155 @@ function doGet(e) {
     lastSyncAt: props.getProperty('LAST_SYNC') || null,
     counts: JSON.parse(props.getProperty('LAST_COUNTS') || '{}'),
   });
+}
+
+// ---------------------------------------------------------------- допуск посетителей
+
+var ACCESS_SHEET_ = '_Доступ';
+var ACCESS_HEADER_ = ['Хэш устройства', 'Имя', 'Сообщение', 'Статус', 'Запрос', 'Решение', 'Последний вход'];
+var MAX_REQUESTS_PER_HOUR_ = 20;
+var MAX_ROWS_ = 500;
+
+function sha256Hex_(text) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
+  return bytes.map(function (b) { return ((b < 0 ? b + 256 : b) + 0x100).toString(16).slice(1); }).join('');
+}
+
+function accessSheet_() {
+  var ss = openSpreadsheet_();
+  var sh = ss.getSheetByName(ACCESS_SHEET_);
+  if (!sh) {
+    sh = ss.insertSheet(ACCESS_SHEET_);
+    sh.getRange(1, 1, 1, ACCESS_HEADER_.length).setValues([ACCESS_HEADER_]);
+    sh.hideSheet();
+  }
+  return sh;
+}
+
+function readAccessRows_(sh) {
+  var n = sh.getLastRow() - 1;
+  if (n < 1) return [];
+  return sh.getRange(2, 1, n, ACCESS_HEADER_.length).getValues().map(function (r, i) {
+    return { row: i + 2, hash: String(r[0]), name: String(r[1]), note: String(r[2]), status: String(r[3]), created: String(r[4]), decided: String(r[5]), lastSeen: String(r[6]) };
+  });
+}
+
+function cleanText_(v, max) {
+  return String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().substring(0, max);
+}
+
+/**
+ * Посетитель: request (отправить запрос) и status (узнать решение). Идентификатор посетителя — случайный секрет
+ * устройства, на сервер уходит только его SHA-256.
+ * Владелец (нужен токен): whoami, list, decide (allow / deny / revoke / delete).
+ */
+function handleAccess_(p) {
+  var action = String(p.action || '');
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    var sh = accessSheet_();
+    var rows = readAccessRows_(sh);
+    var now = new Date().toISOString();
+
+    if (action === 'request') {
+      var hash = String(p.deviceHash || '');
+      if (!/^[a-f0-9]{64}$/.test(hash)) return json_({ ok: false, error: 'bad-device' });
+      var name = cleanText_(p.name, 80);
+      if (name.length < 3) return json_({ ok: false, error: 'name-required' });
+      var found = rows.filter(function (r) { return r.hash === hash; })[0];
+      if (found) return json_({ ok: true, status: found.status });
+      var recent = rows.filter(function (r) { return Date.now() - new Date(r.created).getTime() < 3600000; }).length;
+      if (recent >= MAX_REQUESTS_PER_HOUR_ || rows.length >= MAX_ROWS_) return json_({ ok: false, error: 'rate-limit' });
+      var note = cleanText_(p.note, 300);
+      sh.appendRow([hash, name, note, 'pending', now, '', now]);
+      notifyOwner_(name, note, hash);
+      return json_({ ok: true, status: 'pending' });
+    }
+
+    if (action === 'status') {
+      var h = sha256Hex_(String(p.device || ''));
+      var me = rows.filter(function (r) { return r.hash === h; })[0];
+      if (!me) return json_({ ok: true, status: 'none' });
+      if (!me.lastSeen || Date.now() - new Date(me.lastSeen).getTime() > 600000) sh.getRange(me.row, 7).setValue(now);
+      return json_({ ok: true, status: me.status, name: me.name });
+    }
+
+    var denied = checkToken_(p.token);
+    if (denied) return json_({ ok: false, error: denied });
+
+    if (action === 'whoami') return json_({ ok: true, owner: true });
+
+    if (action === 'list') {
+      return json_({ ok: true, requests: rows.map(function (r) {
+        return { id: r.hash.substring(0, 12), name: r.name, note: r.note, status: r.status, created: r.created, decided: r.decided, lastSeen: r.lastSeen };
+      }) });
+    }
+
+    if (action === 'decide') {
+      var id = String(p.id || '');
+      var decision = String(p.decision || '');
+      var matches = id.length >= 8 ? rows.filter(function (r) { return r.hash.indexOf(id) === 0; }) : [];
+      if (matches.length !== 1) return json_({ ok: false, error: 'not-found' });
+      var target = matches[0];
+      if (decision === 'delete') {
+        sh.deleteRow(target.row);
+        return json_({ ok: true });
+      }
+      var status = { allow: 'allowed', deny: 'denied', revoke: 'revoked' }[decision];
+      if (!status) return json_({ ok: false, error: 'bad-decision' });
+      sh.getRange(target.row, 4).setValue(status);
+      sh.getRange(target.row, 6).setValue(now);
+      return json_({ ok: true, status: status });
+    }
+    return json_({ ok: false, error: 'unknown-action' });
+  } catch (err) {
+    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+  } finally {
+    try { lock.releaseLock(); } catch (x) { /* блокировка не была взята */ }
+  }
+}
+
+/** Письмо владельцу о новом запросе. Решение принимается только на странице «Доступ» сайта (в письме нет ссылок-действий). */
+function notifyOwner_(name, note, hash) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var to = props.getProperty('NOTIFY_EMAIL') || Session.getEffectiveUser().getEmail();
+    if (!to) return;
+    var site = props.getProperty('SITE_URL');
+    MailApp.sendEmail(to, 'Учёт лицея: запрос на доступ — ' + name,
+      'Кто-то просит доступ к сайту.\n\nИмя: ' + name + '\nСообщение: ' + (note || '—') + '\nНомер запроса: ' + hash.substring(0, 12) + '\n\n' +
+      (site ? 'Решить: ' + site.replace(/\/+$/, '') + '/#/access\n' : 'Откройте сайт → раздел «Доступ», чтобы разрешить или отклонить запрос.\n') +
+      '\nЕсли вы не знаете этого человека — отклоните запрос.');
+  } catch (e) { /* письмо не критично: запрос виден в разделе «Доступ» */ }
+}
+
+// ---------------------------------------------------------------- меню таблицы
+
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi().createMenu('Учёт лицея')
+      .addItem('1. Настройка (токен и триггер)', 'setup')
+      .addItem('2. Задать адрес сайта…', 'promptSiteUrl')
+      .addItem('Показать токен', 'showToken')
+      .addToUi();
+  } catch (e) { /* запуск без интерфейса */ }
+}
+
+function promptSiteUrl() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ui.prompt('Адрес сайта', 'Например: https://имя.github.io/Obhod_BIL (нужен для ссылки в письмах о запросах доступа).', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  var v = String(r.getResponseText() || '').trim();
+  if (/^https:\/\//.test(v)) {
+    PropertiesService.getScriptProperties().setProperty('SITE_URL', v);
+    ui.alert('Адрес сайта сохранён.');
+  } else ui.alert('Адрес должен начинаться с https://');
+}
+
+function showToken() {
+  var ui = SpreadsheetApp.getUi();
+  ui.alert('Токен владельца', PropertiesService.getScriptProperties().getProperty('TOKEN') || 'Сначала выполните «Настройка».', ui.ButtonSet.OK);
 }
 
 // ---------------------------------------------------------------- ежедневная проверка

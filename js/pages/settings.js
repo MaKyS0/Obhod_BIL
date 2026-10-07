@@ -35,6 +35,12 @@ export async function render(ctx) {
       } catch (e) { toastError(e); }
     }, 'primary'))));
 
+  // ---- Допуск посетителей ----
+  el.append(h('div', { class: 'card' }, h('h2', null, 'Допуск посетителей'),
+    ctx.access.endpoint
+      ? h('p', null, badge('Включён', 'ok'), ' Посетители отправляют запрос, вы решаете в разделе ', h('a', { href: '#/access' }, '«Доступ»'), '.')
+      : h('p', null, badge('Выключен', 'warn'), ' Укажите адрес Google Apps Script в файле ', h('code', null, 'js/config.js'), ' (ACCESS_ENDPOINT), чтобы пускать на сайт только по вашему разрешению. ', h('a', { href: 'google-apps-script/index.html', target: '_blank', rel: 'noopener' }, 'Инструкция'))));
+
   // ---- Новый год ----
   el.append(h('div', { class: 'card' }, h('h2', null, 'Новый учебный год'), h('p', { class: 'muted' }, `Сейчас: ${yearLabel(st.currentYearId)}. Ежегодный перевод с предпросмотром, выпуском 11 классов и возможностью отмены.`), link('Начать новый учебный год', '#/new-year', 'primary')));
 

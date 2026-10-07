@@ -61,3 +61,13 @@ main { padding: 20px 24px 48px; max-width: 1280px; width: 100%; outline: none; }
   .banners { padding: 0 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+
+/* Допуск посетителей */
+#nav a.owner-only { display: none; }
+body[data-owner="1"] #nav a.owner-only { display: block; }
+body.gated .sidebar, body.gated .topbar, body.gated .banners, body.gated .backdrop { display: none !important; }
+body.gated main { max-width: 560px; margin: 0 auto; padding-top: 12vh; }
+.gate-card h1 { margin-bottom: 8px; }
+.gate-card p { margin-bottom: 12px; }
+.gate-card form + p { margin-top: 12px; }
+.gate-owner { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }

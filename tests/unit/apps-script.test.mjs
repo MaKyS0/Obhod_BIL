@@ -1,61 +1,13 @@
 // Проверка Code.gs без Google: скрипт выполняется в песочнице node:vm с макетами сервисов Apps Script.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import { makeEnv, seed } from './helpers.mjs';
+import { makeSandbox, call as callGas, run } from '../helpers/gas-sandbox.mjs';
 import { buildSheetsPayload } from '../../js/domain/sheets-payload.js';
 
-const CODE = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../google-apps-script/Code.gs'), 'utf8');
-
-function makeSandbox() {
-  const props = {};
-  const sheets = new Map();
-  const triggers = [];
-  const mails = [];
-  const makeRange = (sh, r, c, nr, nc) => ({
-    setNumberFormats: (f) => { sh.formats = f; return this; },
-    setNumberFormat: () => this,
-    setValues: (v) => { for (let i = 0; i < v.length; i++) for (let j = 0; j < v[i].length; j++) { sh.cells[`${r + i},${c + j}`] = v[i][j]; } sh.lastRow = Math.max(sh.lastRow, r + v.length - 1); sh.lastCol = Math.max(sh.lastCol, c + (v[0]?.length || 0) - 1); return this; },
-    setFontWeight: () => this,
-    setBackground: () => this,
-    getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => sh.cells[`${r + i},${c + j}`] ?? '')),
-  });
-  const makeSheet = (name) => {
-    const sh = { name, cells: {}, lastRow: 0, lastCol: 0, hidden: false, frozen: 0, formats: null };
-    sh.clearContents = () => { sh.cells = {}; sh.lastRow = 0; sh.lastCol = 0; };
-    sh.getRange = (r, c, nr = 1, nc = 1) => { const rg = makeRange(sh, r, c, nr, nc); for (const k of Object.keys(rg)) { const f = rg[k]; rg[k] = (...a) => { const x = f(...a); return x === undefined || x === this ? rg : x; }; } return rg; };
-    sh.setFrozenRows = (n) => { sh.frozen = n; };
-    sh.autoResizeColumns = () => {};
-    sh.getLastColumn = () => sh.lastCol;
-    sh.getLastRow = () => sh.lastRow;
-    sh.hideSheet = () => { sh.hidden = true; };
-    sh.isSheetHidden = () => sh.hidden;
-    sh.appendRow = (row) => { sh.lastRow++; row.forEach((v, i) => (sh.cells[`${sh.lastRow},${i + 1}`] = v)); };
-    sh.deleteRows = () => {};
-    return sh;
-  };
-  const ss = { getId: () => 'SHEET123', getSheetByName: (n) => sheets.get(n) || null, insertSheet: (n) => { const s = makeSheet(n); sheets.set(n, s); return s; } };
-  const sandbox = {
-    console,
-    Logger: { log: () => {} },
-    Utilities: { getUuid: () => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); } }) },
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById: () => ss, flush: () => {}, getUi: () => { throw new Error('no ui'); } },
-    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
-    ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ text: t, setMimeType() { return this; }, getContent: () => t }) },
-    ScriptApp: { getProjectTriggers: () => triggers, deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1), newTrigger: (fn) => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create: () => triggers.push({ getHandlerFunction: () => fn }) }) }) }) }) },
-    MailApp: { sendEmail: (...a) => mails.push(a) },
-    Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.com' }) },
-  };
-  vm.createContext(sandbox);
-  vm.runInContext(CODE, sandbox);
-  return { sandbox, props, sheets, triggers, mails };
-}
-
-const call = (sb, fn, arg) => JSON.parse(vm.runInContext(`(${fn})(${JSON.stringify(arg)}).getContent()`, sb.sandbox));
+const vm = { runInContext: (code, sandbox) => run({ sandbox }, code) };
+const call = (sb, fn, arg) => callGas(sb, fn, arg);
 
 test('Code.gs: setup создаёт токен и ежедневный триггер, повторный запуск не меняет токен', () => {
   const sb = makeSandbox();
@@ -120,4 +72,63 @@ test('Code.gs: до setup() запросы отклоняются; неверн�
   sb.props.LAST_SYNC = new Date().toISOString();
   vm.runInContext('dailyJob()', sb.sandbox);
   assert.equal(sb.mails.length, 1, 'свежая синхронизация → письма нет');
+});
+
+test('Code.gs: допуск посетителей — запрос, решение владельца, статус, отзыв, защита и лимиты', () => {
+  let t = Date.parse('2026-10-07T12:00:00Z');
+  const sb = makeSandbox({ now: () => t });
+  const token = run(sb, 'setup()');
+  const secret = 'секрет-устройства-1';
+  const hash = crypto.createHash('sha256').update(secret, 'utf8').digest('hex'); // deviceHash = sha256(secret), как считает сайт
+  const req = (name, note, h = hash) => call(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action: 'request', deviceHash: h, name, note }) } });
+  const status = (s) => call(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action: 'status', device: s }) } });
+  const admin = (action, extra = {}, tk = token) => call(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action, token: tk, ...extra }) } });
+
+  assert.deepEqual(status(secret), { ok: true, status: 'none' });
+  assert.equal(req('A', '').error, 'name-required');
+  assert.equal(req('Иван Иванов', '', 'плохой-хэш').error, 'bad-device');
+  const r1 = req('  Иван   Иванов ', 'Классный руководитель 9А');
+  assert.deepEqual(r1, { ok: true, status: 'pending' });
+  assert.equal(sb.mails.length, 1, 'владельцу ушло письмо');
+  assert.ok(sb.mails[0][1].includes('Иван Иванов') && sb.mails[0][2].includes('Классный руководитель 9А'));
+  assert.ok(!sb.mails[0][2].includes(token), 'токена в письме нет');
+  assert.equal(sb.mails[0][0], 'owner@example.com');
+  assert.equal(req('Иван Иванов', '').status, 'pending', 'повторный запрос не создаёт дубль');
+  assert.equal(sb.mails.length, 1, 'и не шлёт второе письмо');
+  assert.equal(status(secret).status, 'pending');
+  assert.equal(status('чужой-секрет').status, 'none', 'чужое устройство статус не видит');
+
+  // без токена — нельзя ни смотреть, ни решать
+  assert.equal(admin('list', {}, 'wrong').error, 'auth');
+  assert.equal(admin('decide', { id: hash.slice(0, 12), decision: 'allow' }, 'wrong').error, 'auth');
+  assert.equal(status(secret).status, 'pending', 'решение без токена не применилось');
+  assert.equal(call(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action: 'list' }) } }).error, 'auth');
+
+  const list = admin('list');
+  assert.equal(list.requests.length, 1);
+  assert.equal(list.requests[0].name, 'Иван Иванов');
+  assert.equal(list.requests[0].id, hash.slice(0, 12));
+  assert.ok(!JSON.stringify(list).includes(hash), 'полный хэш наружу не отдаётся');
+  assert.equal(admin('whoami').owner, true);
+
+  assert.equal(admin('decide', { id: 'abc', decision: 'allow' }).error, 'not-found', 'короткий id отклоняется');
+  assert.equal(admin('decide', { id: list.requests[0].id, decision: 'allow' }).status, 'allowed');
+  assert.equal(status(secret).status, 'allowed');
+  assert.ok(!('key' in status(secret)), 'ключа данных скрипт не выдаёт');
+  assert.equal(admin('decide', { id: list.requests[0].id, decision: 'revoke' }).status, 'revoked');
+  assert.equal(status(secret).status, 'revoked');
+  assert.equal(req('Иван Иванов', '').status, 'revoked', 'отозванный не может подать запрос заново');
+  assert.equal(admin('decide', { id: list.requests[0].id, decision: 'bogus' }).error, 'bad-decision');
+  assert.equal(admin('decide', { id: list.requests[0].id, decision: 'deny' }).status, 'denied');
+  assert.equal(admin('decide', { id: list.requests[0].id, decision: 'delete' }).ok, true);
+  assert.equal(admin('list').requests.length, 0);
+  assert.equal(status(secret).status, 'none');
+
+  // лимит запросов в час и защита от внедрения управляющих символов
+  for (let i = 0; i < 20; i++) assert.equal(req(`Посетитель ${i}`, 'x\u0000\ny'.repeat(200), i.toString(16).padStart(64, '0')).ok, true);
+  assert.equal(req('Лишний', '', 'f'.repeat(64)).error, 'rate-limit');
+  const listed = admin('list').requests;
+  assert.ok(listed.every((r) => r.note.length <= 300 && !/[\u0000-\u001f]/.test(r.note)));
+  t += 2 * 3600 * 1000;
+  assert.equal(req('Лишний', '', 'f'.repeat(64)).ok, true, 'через час лимит снимается');
 });

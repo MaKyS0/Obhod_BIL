@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import { startServer } from './server.mjs';
 import { encryptJson } from '../../js/domain/crypto-box.js';
+import { makeSandbox, call as gasCall, run as gasRun } from '../helpers/gas-sandbox.mjs';
 
 let pw;
 try { pw = await import('playwright'); } catch { pw = createRequire('/opt/node22/lib/node_modules/')('playwright'); }
@@ -395,6 +396,132 @@ await scenario('Зашифрованные данные: выбор файла, 
   await page.waitForSelector('.toast.error:has-text("Неверный пароль")');
   await modal(page).locator('button:has-text("Отмена")').click();
   eq(await state(page, 'S.students.length'), 2, 'данные из репозитория не загружены без пароля');
+});
+
+// ---------------------------------------------------------------------------------------------
+// Допуск посетителей: сервер — настоящий Code.gs в песочнице, подключённый вместо script.google.com.
+const ENDPOINT = 'https://script.google.com/macros/s/TEST/exec';
+async function accessSite(sb, { offline = { on: false } } = {}) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+  await context.addInitScript(`window.__LYCEUM_ACCESS_ENDPOINT__ = ${JSON.stringify(ENDPOINT)}; window.__LYCEUM_POLL_MS__ = 300;`);
+  const errors = [];
+  context.on('page', (pg) => {
+    pg.on('console', (m) => m.type() === 'error' && !/ERR_FAILED|Failed to load resource/.test(m.text()) && errors.push(`console: ${m.text()}`));
+    pg.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  });
+  await context.route('**/script.google.com/**', async (route) => {
+    if (offline.on) return route.abort();
+    const req = route.request();
+    const cors = { 'access-control-allow-origin': '*' };
+    const body = req.method() === 'POST' ? gasCall(sb, 'doPost', { postData: { contents: req.postData() } }) : gasCall(sb, 'doGet', { parameter: Object.fromEntries(new URL(req.url()).searchParams) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body), headers: cors });
+  });
+  const page = await context.newPage();
+  return { context, page, errors };
+}
+
+await scenario('Допуск: запрос → письмо владельцу → решение → вход; отказ; отзыв стирает данные; права владельца', async () => {
+  const sb = makeSandbox();
+  const token = gasRun(sb, 'setup()');
+  const opened = [];
+  const site = async (o) => { const x = await accessSite(sb, o); opened.push(x); return x; };
+  try {
+    // --- посетитель видит только экран допуска
+    const v = await site();
+    await v.page.goto(srv.url);
+    await v.page.waitForSelector('h1:has-text("Вход по разрешению")');
+    assert(!(await v.page.locator('#sidebar').isVisible()), 'меню скрыто до допуска');
+    assert(!(await v.page.innerText('body')).includes('Классы'), 'разделы сайта не показаны');
+    await v.page.fill('input[name=visitorName]', 'Аб');
+    await v.page.click('#requestAccessBtn');
+    await v.page.waitForSelector('.field.invalid');
+    eq(sb.mails.length, 0, 'с коротким именем запрос не ушёл');
+    await v.page.fill('input[name=visitorName]', 'Мария Петрова');
+    await v.page.fill('textarea[name=visitorNote]', 'Воспитатель 8-х классов');
+    await v.page.click('#requestAccessBtn');
+    await v.page.waitForSelector('h1:has-text("Запрос отправлен")');
+    eq(sb.mails.length, 1, 'владельцу ушло письмо');
+    assert(sb.mails[0][2].includes('Мария Петрова') && sb.mails[0][2].includes('Воспитатель 8-х классов'), 'в письме имя и сообщение');
+    // перезагрузка не даёт войти и не создаёт второй запрос
+    await v.page.reload();
+    await v.page.waitForSelector('h1:has-text("Запрос отправлен")');
+    eq(sb.mails.length, 1, 'повторных писем нет');
+
+    // --- владелец: неверный токен, затем верный
+    const o = await site();
+    await o.page.goto(srv.url);
+    await o.page.waitForSelector('#ownerLoginBtn');
+    await o.page.click('#ownerLoginBtn');
+    await o.page.fill('input[name=ownerToken]', 'неверный-токен');
+    await o.page.click('#ownerLoginSubmit');
+    await o.page.waitForSelector('.field.invalid');
+    assert(!(await o.page.locator('#sidebar').isVisible()), 'с неверным токеном не пустило');
+    await o.page.fill('input[name=ownerToken]', token);
+    await o.page.click('#ownerLoginSubmit');
+    await o.page.waitForSelector('#sidebar', { state: 'visible' });
+    await o.page.waitForFunction(() => document.querySelector('#nav a[data-route=access]')?.textContent.includes('(1)'));
+    eq(await o.page.evaluate(() => window.__lyceum.store.state.settings.sheetsUrl), ENDPOINT, 'адрес скрипта проставлен владельцу автоматически');
+    await o.page.click('#nav a[data-route=access]');
+    await o.page.waitForSelector('tr:has-text("Мария Петрова")');
+    assert((await o.page.textContent('tr:has-text("Мария Петрова")')).includes('Воспитатель 8-х классов'), 'сообщение видно владельцу');
+    // посетитель всё ещё снаружи
+    assert(!(await v.page.locator('#sidebar').isVisible()), 'до решения посетитель не вошёл');
+
+    // загрузим посетителю данные заранее — проверим стирание при отзыве (используем демо до допуска невозможно, поэтому после)
+    await o.page.click('tr:has-text("Мария Петрова") [data-act=allow]');
+    await o.page.waitForSelector('tr:has-text("Мария Петрова"):has-text("Допущен")');
+    await v.page.waitForSelector('#sidebar', { state: 'visible' });
+    eq(await v.page.textContent('h1'), 'Главная', 'допущенный посетитель вошёл сам, без перезагрузки');
+    assert(!(await v.page.locator('#nav a[data-route=access]').isVisible()), 'пункта «Доступ» у посетителя нет');
+    await v.page.goto(srv.url + '#/access');
+    await v.page.waitForSelector('.notice.danger:has-text("только владельцу")');
+    await v.page.goto(srv.url + '#/settings');
+    await v.page.click('#loadDemoBtn');
+    await v.page.waitForFunction(() => window.__lyceum.store.state.students.length > 0);
+
+    // --- второй посетитель получает отказ и остаётся снаружи
+    const v2 = await site();
+    await v2.page.goto(srv.url);
+    await v2.page.fill('input[name=visitorName]', 'Посторонний Человек');
+    await v2.page.click('#requestAccessBtn');
+    await v2.page.waitForSelector('h1:has-text("Запрос отправлен")');
+    await o.page.click('#accessRefresh');
+    await o.page.waitForSelector('tr:has-text("Посторонний Человек")');
+    await o.page.click('tr:has-text("Посторонний Человек") [data-act=deny]');
+    await o.page.locator('dialog.modal[open] button:has-text("Отклонить")').last().click();
+    await o.page.waitForSelector('tr:has-text("Посторонний Человек"):has-text("Отклонён")');
+    await v2.page.waitForSelector('h1:has-text("В доступе отказано")');
+    await v2.page.reload();
+    await v2.page.waitForSelector('h1:has-text("В доступе отказано")');
+    assert(!(await v2.page.locator('#sidebar').isVisible()), 'отклонённый не видит сайт');
+
+    // --- отзыв: после перезагрузки экран «Доступ отозван», локальные данные стёрты
+    await o.page.click('tr:has-text("Мария Петрова") [data-act=revoke]');
+    await o.page.locator('dialog.modal[open] button:has-text("Отозвать доступ")').click();
+    await o.page.waitForSelector('tr:has-text("Мария Петрова"):has-text("Отозван")');
+    await v.page.reload();
+    await v.page.waitForSelector('h1:has-text("Доступ отозван")');
+    await v.page.waitForTimeout(300);
+    eq(await v.page.evaluate(async () => (await indexedDB.databases()).some((d) => d.name === 'lyceum-db')), false, 'база посетителя удалена');
+    assert(!(await v.page.locator('#sidebar').isVisible()), 'отозванный не видит сайт');
+
+    // --- владелец после перезагрузки входит сразу (токен сохранён)
+    await o.page.reload();
+    await o.page.waitForSelector('#sidebar', { state: 'visible' });
+    // --- нет связи: экран с повтором, сайт не открывается
+    const off = { on: true };
+    const v3 = await site({ offline: off });
+    await v3.page.goto(srv.url);
+    await v3.page.waitForSelector('h1:has-text("Нет связи с сервером допуска")');
+    assert(!(await v3.page.locator('#sidebar').isVisible()), 'без связи сайт закрыт');
+    off.on = false;
+    await v3.page.click('#retryBtn');
+    await v3.page.waitForSelector('h1:has-text("Вход по разрешению")');
+    const all = opened.flatMap((x) => x.errors);
+    if (all.length) throw new Error(`Ошибки в консоли браузера:\n  ${all.join('\n  ')}`);
+  } finally {
+    for (const x of opened) await x.context.close();
+  }
 });
 
 await scenario('Экспорт JSON, очистка, восстановление из файла и из копии в браузере, CSV-экспорт', async (page) => {

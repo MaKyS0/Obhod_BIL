@@ -32,6 +32,11 @@ export function createMemoryDb(reason = '') {
         for (const r of recs) data[s].set(s === 'meta' ? r.key : r.id, clone(r));
       }
     },
+    async wipe() {
+      for (const s of DATA_STORES) data[s].clear();
+      data.meta.clear();
+      backups.clear();
+    },
     async addBackup(rec) {
       const id = ++backupSeq;
       backups.set(id, clone({ ...rec, id }));

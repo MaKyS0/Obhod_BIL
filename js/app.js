@@ -20,6 +20,10 @@ import * as archive from './pages/archive.js';
 import * as importExport from './pages/import-export.js';
 import * as settings from './pages/settings.js';
 import * as search from './pages/search.js';
+import * as accessPage from './pages/access.js';
+import { accessEndpoint } from './config.js';
+import { runGate, watchAccess } from './ui/gate.js';
+import { listRequests } from './services/access.js';
 
 const ROUTES = [
   ['dashboard', '/', dashboard],
@@ -35,6 +39,7 @@ const ROUTES = [
   ['import', '/import', importExport],
   ['settings', '/settings', settings],
   ['search', '/search', search],
+  ['access', '/access', accessPage],
 ].map(([name, path, mod]) => ({ name, path, render: mod.render, title: mod.title }));
 
 const DAY = 24 * 3600 * 1000;
@@ -49,10 +54,21 @@ async function main() {
   await repo.initialize();
   store.listenOtherTabs();
 
+  // Допуск посетителей: если в js/config.js указан адрес скрипта, без решения владельца сайт не открывается.
+  const endpoint = accessEndpoint();
+  const access = { endpoint, owner: !endpoint, pending: 0, onPending: null };
+  if (endpoint) {
+    const { role } = await runGate({ endpoint, store, repo, db, view });
+    access.owner = role === 'owner';
+    if (access.owner) document.body.dataset.owner = '1';
+    else watchAccess(endpoint);
+    view.replaceChildren();
+  }
+
   const router = createRouter({
     view,
     routes: ROUTES,
-    makeContext: ({ view: v, params, query, route }) => ({ view: v, params, query, route, store, repo, router, get state() { return store.state; }, refresh: () => router.refresh() }),
+    makeContext: ({ view: v, params, query, route }) => ({ view: v, params, query, route, store, repo, router, access, get state() { return store.state; }, refresh: () => router.refresh() }),
     onChange: (route) => {
       $$('#nav a').forEach((a) => (a.dataset.route === route.name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
       const r = ROUTES.find((x) => x.name === route.name);
@@ -135,6 +151,18 @@ async function main() {
 
   // Постоянное хранение запрашиваем по первому действию пользователя.
   document.addEventListener('pointerdown', () => { try { navigator.storage?.persist?.(); } catch { /* ignore */ } }, { once: true });
+
+  // Владельцу: число ожидающих запросов рядом с пунктом «Доступ».
+  if (endpoint && access.owner) {
+    const link = $('#nav a[data-route=access]');
+    const paint = (n) => { link.textContent = n ? `Доступ (${n})` : 'Доступ'; };
+    access.onPending = paint;
+    const refresh = async () => {
+      try { const { requests } = await listRequests(endpoint, store.state.settings.sheetsToken); access.pending = requests.filter((r) => r.status === 'pending').length; paint(access.pending); } catch { /* нет связи */ }
+    };
+    refresh();
+    setInterval(refresh, 60000);
+  }
 
   window.__lyceum = { store, repo, router };
   await router.start();
