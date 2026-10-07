@@ -26,9 +26,13 @@ async function post(url, body) {
   }
 }
 
-export async function syncNow(store, repo, { reason = 'manual' } = {}) {
+export const isEmptyDb = (state) => !state.students.length && !state.staff.length;
+
+export async function syncNow(store, repo, { reason = 'manual', allowEmpty = false } = {}) {
   const s = store.state.settings;
   if (!s.sheetsUrl) return { ok: false, error: 'Адрес Google Apps Script не указан в настройках' };
+  // Защита: пустая база не должна затирать данные в таблице (например, в новом браузере владельца).
+  if (!allowEmpty && isEmptyDb(store.state)) return { ok: false, empty: true, error: 'В этом браузере нет данных — выгрузка стёрла бы таблицу. Сначала загрузите данные (Импорт и экспорт).' };
   const versionAtStart = store.version;
   const payload = buildSheetsPayload(store.state, { includeBackup: s.includeBackupInSync });
   try {
@@ -86,6 +90,7 @@ export function startAutoSync(store, repo, { delayMs = 3000 } = {}) {
     const s = store.state.settings;
     if (!s.autoSync || !s.sheetsUrl) return false;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    if (isEmptyDb(store.state)) return false;
     return s.dirtySinceSync || !s.lastSyncAt || Date.now() - new Date(s.lastSyncAt).getTime() > DAY;
   };
 

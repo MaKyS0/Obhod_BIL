@@ -462,6 +462,8 @@ await scenario('Допуск: запрос → письмо владельцу �
     await o.page.waitForSelector('#sidebar', { state: 'visible' });
     await o.page.waitForFunction(() => document.querySelector('#nav a[data-route=access]')?.textContent.includes('(1)'));
     eq(await o.page.evaluate(() => window.__lyceum.store.state.settings.sheetsUrl), ENDPOINT, 'адрес скрипта проставлен владельцу автоматически');
+    await o.page.waitForTimeout(4500); // автосинхронизация стартует через 3 с после открытия
+    eq(sb.sheets.has('Ученики'), false, 'пустая база владельца не затёрла таблицу автосинхронизацией');
     await o.page.click('#nav a[data-route=access]');
     await o.page.waitForSelector('tr:has-text("Мария Петрова")');
     assert((await o.page.textContent('tr:has-text("Мария Петрова")')).includes('Воспитатель 8-х классов'), 'сообщение видно владельцу');

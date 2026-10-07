@@ -117,7 +117,7 @@ async function main() {
     const st = store.state.settings;
     if (!st.sheetsUrl) { location.hash = '#/settings'; return; }
     syncBtn.disabled = true;
-    const r = await syncNow(store, repo, { reason: 'manual' });
+    const r = await syncNow(store, repo, { reason: 'manual' }); // пустую базу сразу не отправляет — защита таблицы
     syncBtn.disabled = false;
     toast(r.ok ? 'Данные отправлены в Google Таблицы' : r.error, r.ok ? 'success' : 'error');
   });

@@ -5,7 +5,7 @@ import { confirmAction } from '../ui/modal.js';
 import { toast, toastError } from '../ui/toast.js';
 import { downloadJson, readFileBytes } from '../services/download.js';
 import { saveBackupFile } from '../services/backup-file.js';
-import { syncNow, checkConnection, describeSync } from '../services/sync.js';
+import { syncNow, checkConnection, describeSync, isEmptyDb } from '../services/sync.js';
 import { loadDemo } from '../services/demo.js';
 import { decodeBytes } from '../domain/csv.js';
 import { validateBackup } from '../domain/backup.js';
@@ -65,8 +65,13 @@ export async function render(ctx) {
       }),
       btn('Выгрузить в Google Таблицы', async () => {
         try { await saveSheets(); } catch (e) { return toastError(e); }
+        let allowEmpty = false;
+        if (isEmptyDb(store.state)) {
+          allowEmpty = await confirmAction({ title: 'Выгрузить пустую базу?', message: 'В этом браузере нет ни учеников, ни персонала. Выгрузка ПЕРЕЗАПИШЕТ листы в Google Таблице пустыми данными.', details: ['Данные в таблице будут стёрты.', 'Чтобы этого не случилось, сначала загрузите данные в «Импорт и экспорт».'], confirmLabel: 'Всё равно выгрузить' });
+          if (!allowEmpty) return;
+        }
         statusBox.textContent = 'Отправка данных…';
-        const r = await syncNow(store, repo, { reason: 'manual' });
+        const r = await syncNow(store, repo, { reason: 'manual', allowEmpty });
         statusBox.textContent = describeSync(store.state.settings).text;
         toast(r.ok ? (r.confirmed ? 'Данные выгружены в Google Таблицы' : 'Данные отправлены (подтверждение недоступно)') : r.error, r.ok ? 'success' : 'error');
       }, '', { id: 'syncNowBtn' }))));
