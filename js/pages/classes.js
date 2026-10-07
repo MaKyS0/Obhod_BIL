@@ -66,7 +66,7 @@ export function render(ctx) {
           if (!g) return h('span', { class: 'muted' }, '—');
           return h('span', { class: `badge ${g.done ? 'ok' : g.marked ? 'warn' : ''}`.trim() }, g.done ? 'Готов' : `${g.marked} из ${g.total}`);
         } },
-        { key: 'act', label: 'Действия', actions: true, render: (c) => link('Открыть', `#/class/${encodeURIComponent(c.id)}`, 'sm') },
+        { key: 'act', label: 'Действия', actions: true, render: (c) => link('Открыть', `#/class/${encodeURIComponent(c.id)}`, 'sm', { icon: 'chevron-right' }) },
       ],
     }));
   }

@@ -85,8 +85,7 @@ export function render(ctx) {
     h('summary', null, 'Фильтры'),
     h('div', { class: 'field-row' }, grade.el, klass.el, status.el));
   el.append(h('div', { class: 'card flush' },
-    h('div', { class: 'table-tools' }, h('div', { class: 'grow search-box' }, icon('search', 16), q), count),
-    h('div', { style: 'padding:10px 14px 0;border-bottom:1px solid var(--border)' }, filters),
+    h('div', { class: 'table-tools' }, h('div', { class: 'grow search-box' }, icon('search', 16), q), filters, count),
     holder));
 }
 

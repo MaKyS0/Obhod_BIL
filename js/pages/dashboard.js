@@ -9,7 +9,6 @@ import { nStudents, nClasses } from '../domain/plural.js';
 import { roundView } from '../domain/rounds.js';
 import { recentChanges } from '../domain/activity.js';
 import { todayISO, formatDateTime } from '../domain/dates.js';
-import { yearLabel as yl } from '../domain/years.js';
 import { describeSync } from '../services/sync.js';
 import { describeLive } from '../services/live.js';
 import { listRequests } from '../services/access.js';
@@ -17,8 +16,22 @@ import { loadDemo } from '../services/demo.js';
 
 export const title = 'Главная';
 
-const stat = (value, label, sub, extra = '') => h('div', { class: `stat ${extra}`.trim() }, h('div', { class: 'value' }, String(value)), h('div', { class: 'label' }, label), sub ? h('div', { class: 'sub' }, sub) : null);
+// Показатель — ссылка на свой раздел: подпись сверху, число, пояснение. «Знаменатель» (15 из 15) приглушён; флажок у подписи — чего-то не хватает.
+const stat = (href, label, value, sub, { of = null, flag = false } = {}) => h('a', { class: 'stat', href },
+  h('div', { class: 'label' }, flag ? h('span', { class: 'flag', title: 'Есть что назначить' }) : null, label),
+  h('div', { class: 'value' }, String(value), of == null ? null : h('span', { class: 'of' }, `/${of}`)),
+  sub ? h('div', { class: 'sub' }, sub) : null);
 const section = (title, body, action = null) => h('section', { class: 'dash-sec' }, h('div', { class: 'card-head' }, h('h2', null, title), action), body);
+const secLink = (label, href) => h('a', { class: 'sec-link', href }, label, icon('chevron-right', 14));
+const pad = (n) => String(n).padStart(2, '0');
+// Короткое время для ленты: сегодня — часы и минуты, раньше — число и месяц.
+function shortWhen(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toDateString() === new Date().toDateString() ? hm : `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${hm}`;
+}
+const longDate = () => new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s*г\.$/, '').replace(/^./, (c) => c.toUpperCase());
 
 export function render(ctx) {
   const { state: s, repo, view: el, access } = ctx;
@@ -31,7 +44,7 @@ export function render(ctx) {
 
   el.append(pageHead({
     title: 'Главная',
-    sub: `${s.settings.lyceumName} · учебный год ${yl(yid)}`,
+    sub: `${longDate()} · ${s.settings.lyceumName}`,
     actions: [link('Вечерний обход', '#/rounds', 'primary', { icon: 'moon' }), link('Начать новый учебный год', '#/new-year', '', { icon: 'calendar-next' })],
   }));
 
@@ -73,35 +86,36 @@ export function render(ctx) {
   const paintAttention = (extra = []) => {
     const all = [...extra, ...items];
     attnHolder.replaceChildren(all.length
-      ? h('ul', { class: 'attention', 'aria-label': 'Требует внимания' }, all)
+      ? h('div', { class: 'attention-box' }, h('div', { class: 'attention-head' }, 'Требует внимания', h('span', { class: 'n' }, String(all.length))), h('ul', { class: 'attention', 'aria-label': 'Требует внимания' }, all))
       : v.total ? h('div', { class: 'attention-ok' }, icon('check', 16), 'Замечаний нет: данные в порядке, обход и назначения заполнены.') : null);
   };
   paintAttention();
   el.append(attnHolder);
 
   // ---- Ключевые числа ----
-  const noTeacher = v.classesWithoutTeacher.length;
   el.append(h('div', { class: 'kpis' },
-    stat(v.total, 'Учеников', `${nClasses(v.classCount)}, ${v.grades.length} параллелей`),
-    stat(`${v.teachersAssigned}/${v.classCount}`, 'Классные руководители', `всего ${sc.teachers}`, noTeacher ? 'is-warn' : ''),
-    stat(`${v.tutorsAssigned}/${v.classCount}`, 'Воспитатели', `всего ${sc.tutors}`, v.classesWithoutTutor.length ? 'is-warn' : ''),
-    stat(round.totals.total ? `${round.totals.marked}/${round.totals.total}` : '—', 'Обход сегодня', round.totals.total ? `классов готово: ${round.doneClasses} из ${round.groups.length}` : 'нет учеников'),
-    stat(archived, 'В архиве', 'выпускники и выбывшие'),
+    stat('#/students', 'Ученики', v.total, `${nClasses(v.classCount)} · ${v.grades.length} параллелей`),
+    stat('#/staff', 'Классные руководители', v.teachersAssigned, `в штате: ${sc.teachers}`, { of: v.classCount, flag: v.classesWithoutTeacher.length > 0 }),
+    stat('#/staff', 'Воспитатели', v.tutorsAssigned, `в штате: ${sc.tutors}`, { of: v.classCount, flag: v.classesWithoutTutor.length > 0 }),
+    stat('#/rounds', 'Обход сегодня', round.totals.total ? round.totals.marked : '—', round.totals.total ? `классов готово: ${round.doneClasses} из ${round.groups.length}` : 'нет учеников', { of: round.totals.total || null }),
+    stat('#/archive', 'В архиве', archived, 'выпускники и выбывшие'),
   ));
 
   // ---- Левая колонка: обход и параллели ----
   const t = round.totals;
   const pct = t.total ? Math.round((t.marked / t.total) * 100) : 0;
+  const cell = (cls, label, n) => h('div', { class: `rm-cell ${cls}` }, h('b', null, String(n)), h('span', null, label));
   const roundBox = h('div', { class: 'round-meter' },
+    h('div', { class: 'rm-top' }, h('span', null, 'Отмечено ', h('b', null, `${t.marked} из ${t.total}`)), h('span', null, `${pct}%`)),
     h('div', { class: 'round-progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': t.total, 'aria-valuenow': t.marked, 'aria-label': 'Отмечено на вечернем обходе' }, h('i', { style: `width:${pct}%` })),
-    h('div', { class: 'meter-row' },
-      h('span', null, 'Ночует: ', h('b', null, String(t.byPlace.sleeping))),
-      h('span', null, 'Болеет: ', h('b', null, String(t.byPlace.sick))),
-      h('span', null, 'С дома: ', h('b', null, String(t.byPlace.home))),
-      h('span', null, 'Не отмечено: ', h('b', null, String(t.total - t.marked)))));
+    h('div', { class: 'rm-grid' },
+      cell('rm-sleeping', 'Ночует', t.byPlace.sleeping),
+      cell('rm-sick', 'Болеет', t.byPlace.sick),
+      cell('rm-home', 'С дома', t.byPlace.home),
+      cell('rm-none', 'Не отмечено', t.total - t.marked)));
   const max = Math.max(1, ...v.grades.map((g) => g.count));
   const grades = h('table', { class: 'mini-table' },
-    h('thead', null, h('tr', null, h('th', null, 'Параллель'), h('th', { class: 'num' }, 'Классов'), h('th', { class: 'num' }, 'Учеников'), h('th', { class: 'bar-cell', 'aria-hidden': 'true' }, ''))),
+    h('thead', null, h('tr', null, h('th', null, 'Параллель'), h('th', { class: 'num' }, 'Классов'), h('th', { class: 'num' }, 'Учеников'), h('th', { class: 'bar-cell', 'aria-hidden': 'true' }))),
     h('tbody', null, v.grades.map((g) => h('tr', null,
       h('td', null, h('strong', null, `${g.grade} классы`)),
       h('td', { class: 'num' }, String(g.classCount)),
@@ -111,13 +125,13 @@ export function render(ctx) {
   // ---- Правая колонка: данные, посетители, изменения ----
   const lastBackup = s.settings.lastExportAt || s.settings.lastBackupAt;
   const facts = h('dl', { class: 'facts' },
-    h('dt', null, 'Синхронизация'), h('dd', null, badge(sync.text.replace(/^Общая база: /, ''), sync.kind === 'ok' ? 'ok' : sync.kind === 'error' ? 'danger' : sync.kind === 'warn' ? 'warn' : '')),
+    h('dt', null, 'Синхронизация'), h('dd', null, badge(sync.text.replace(/^Общая база: /, ''), `plain ${sync.kind === 'ok' ? 'ok' : sync.kind === 'error' ? 'danger' : sync.kind === 'warn' ? 'warn' : ''}`.trim())),
     h('dt', null, 'Обновлено'), h('dd', null, live && live.status.lastOkAt ? formatDateTime(new Date(live.status.lastOkAt).toISOString()) : s.settings.lastSyncAt ? formatDateTime(s.settings.lastSyncAt) : '—'),
     h('dt', null, 'Резервная копия'), h('dd', null, lastBackup ? formatDateTime(lastBackup) : 'не создавалась'),
     h('dt', null, 'Хранилище'), h('dd', null, ctx.store.db.kind === 'indexeddb' ? 'этот браузер + общая база' : 'только память'));
   if (live && live.status.pending) facts.append(h('dt', null, 'Ждёт отправки'), h('dd', null, `${live.status.pending}`));
 
-  const visitors = h('div', { class: 'loading' }, 'Загрузка…');
+  const visitors = h('div', { class: 'muted' }, 'Загрузка…');
   if (access.endpoint && access.owner) {
     listRequests(access.endpoint, s.settings.sheetsToken).then(({ requests }) => {
       if (!alive) return;
@@ -138,16 +152,16 @@ export function render(ctx) {
   const activity = changes.length
     ? h('ul', { class: 'activity' }, changes.map((c) => h('li', null,
       h('span', { class: 'what' }, h('span', { class: 'kind' }, c.title), c.detail ? [': ', c.detail] : null),
-      h('span', { class: 'when' }, formatDateTime(c.at)))))
+      h('span', { class: 'when', title: formatDateTime(c.at) }, shortWhen(c.at)))))
     : h('p', { class: 'muted' }, 'Изменений пока нет.');
 
   el.append(h('div', { class: 'dash' },
-    h('div', { class: 'dash-col' },
-      section('Вечерний обход · сегодня', roundBox, link('Открыть', '#/rounds', 'sm')),
-      section('Параллели', v.grades.length ? grades : h('p', { class: 'muted' }, 'Классов пока нет.'), link('Все классы', '#/classes', 'sm'))),
-    h('div', { class: 'dash-col' },
-      section('Данные', facts, link('Настройки', '#/settings?section=data', 'sm')),
-      access.endpoint && access.owner ? section('Посетители', visitors, link('Доступ', '#/access', 'sm')) : null,
+    h('div', { class: 'dash-panel' },
+      section('Вечерний обход · сегодня', roundBox, secLink('Открыть', '#/rounds')),
+      section('Параллели', v.grades.length ? grades : h('p', { class: 'muted' }, 'Классов пока нет.'), secLink('Все классы', '#/classes'))),
+    h('div', { class: 'dash-panel dash-side' },
+      section('Данные', facts, secLink('Настройки', '#/settings?section=data')),
+      access.endpoint && access.owner ? section('Посетители', visitors, secLink('Доступ', '#/access')) : null,
       section('Последние изменения', activity))));
 
   return () => { alive = false; };

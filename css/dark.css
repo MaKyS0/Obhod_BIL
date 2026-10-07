@@ -56,6 +56,9 @@
   html[data-theme="dark"] input:hover:not(:disabled), html[data-theme="dark"] select:hover:not(:disabled) { border-color: #51647a; }
   html[data-theme="dark"] input[type="date"] { color-scheme: dark; }
   html[data-theme="dark"] .global-search input { background: #101a24; }
+  html[data-theme="dark"] .btn { box-shadow: none; }
+  html[data-theme="dark"] .btn:hover { border-color: #51647a; }
+  html[data-theme="dark"] .global-search kbd { background: #16202b; }
   html[data-theme="dark"] dialog.modal::backdrop, html[data-theme="dark"] .backdrop { background: rgba(3, 8, 14, .66); }
   html[data-theme="dark"] .toast { background: #263648; }
   html[data-theme="dark"] .round-progress > i { background: #4cb052; }
@@ -66,7 +69,7 @@
 }
 
 /* Переключатель темы */
-.theme-btn { flex: none; display: inline-grid; place-items: center; width: 32px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text-2); cursor: pointer; transition: background-color .12s, color .12s; }
+.theme-btn { position: relative; flex: none; display: inline-grid; place-items: center; width: 32px; height: 30px; padding: 0; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-2); cursor: pointer; transition: background-color .12s, color .12s; }
 .theme-btn:hover { background: var(--surface-3); color: var(--text); }
 @media (pointer: coarse) { .theme-btn { width: 40px; height: 40px; } }
 html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after { transition: background-color .3s ease, color .3s ease, border-color .3s ease !important; }

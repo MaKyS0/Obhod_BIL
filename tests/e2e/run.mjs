@@ -884,6 +884,57 @@ await scenario('Интерфейс: меню по группам с иконка
   eq(await page.locator('table.data tbody tr').count(), 3, 'фильтр по параллели');
 });
 
+await scenario('Аудит интерфейса: шапка и подвал выровнены, показатели в одну строку, счётчики меню, иконки действий, фильтры в строке поиска', async (page) => {
+  await loadDemo(page);
+  await go(page, '#/');
+  await page.waitForSelector('.kpis');
+  const box = (sel) => page.evaluate((q) => { const r = document.querySelector(q).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), b: Math.round(r.bottom) }; }, sel);
+  // подвал начинается там же, где и содержимое страницы
+  const main = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('main')).paddingLeft) + document.querySelector('main').getBoundingClientRect().left);
+  const foot = await page.evaluate(() => document.querySelector('.site-foot span').getBoundingClientRect().left);
+  assert(Math.abs(main - foot) <= 1, `подвал выровнен по содержимому (${main} / ${foot})`);
+  // граница шапки совпадает с границей блока названия в меню
+  eq((await box('.brand')).b, (await box('.topbar')).b, 'линии под логотипом и шапкой на одной высоте');
+  // элементы шапки одной высоты
+  const hs = await page.evaluate(() => ['#globalSearch', '#syncStatus', '#themeBtn'].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().height)));
+  assert(Math.max(...hs) - Math.min(...hs) <= 2, `поиск, статус базы и тема одной высоты: ${hs}`);
+  // меню: «Система» прижата к низу, у классов, учеников и персонала — счётчики
+  const nums = await page.$$eval('#nav .nav-n', (e) => e.map((n) => n.textContent));
+  eq(nums.join(','), `15,${await state(page, 'S.students.filter(x => x.status === "active").length')},${await state(page, 'S.staff.filter(x => !x.archived).length')}`, 'счётчики в меню');
+  const last = await box('.nav-group-end');
+  const sb = await box('.sidebar-foot');
+  assert(sb.y - last.b <= 12, 'группа «Система» стоит над подвалом меню');
+  // показатели: пять в одной строке, каждый — ссылка на свой раздел
+  const tops = await page.$$eval('.kpis .stat', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  eq(new Set(tops).size, 1, 'пять показателей в одной строке');
+  eq((await page.$$eval('.kpis a.stat', (e) => e.map((a) => a.getAttribute('href')))).join(' '), '#/students #/staff #/staff #/rounds #/archive', 'показатели ведут в разделы');
+  // «Требует внимания» с числом, строки таблицы и подписи не слипаются
+  assert((await page.textContent('.attention-head')).includes('Требует внимания'), 'заголовок блока внимания');
+  // правая часть планшета: показатели тоже в одну строку
+  for (const [w, h] of [[1024, 768], [820, 1180]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(80);
+    const t = await page.$$eval('.kpis .stat', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    eq(new Set(t).size, 1, `${w}: показатели в одной строке`);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  // таблицы: заголовки без КАПСА, действия в строке — иконки, ссылки без подчёркивания
+  await go(page, '#/students');
+  await page.waitForSelector('table.data');
+  eq(await page.evaluate(() => getComputedStyle(document.querySelector('table.data thead th')).textTransform), 'none', 'заголовки таблицы без капса');
+  eq(await page.evaluate(() => getComputedStyle(document.querySelector('table.data td.actions .btn > span')).display), 'none', 'подписи действий спрятаны (остались в подсказке)');
+  assert(await page.evaluate(() => !!document.querySelector('table.data td.actions .btn[title="Изменить"]')), 'у кнопки-иконки есть подсказка');
+  eq(await page.evaluate(() => getComputedStyle(document.querySelector('table.data td a')).textDecorationLine), 'none', 'ссылки в таблице без подчёркивания');
+  // фильтры стоят в одной строке с поиском
+  const s1 = await box('.table-tools .search-box');
+  const f1 = await box('.table-tools .filters-box');
+  assert(Math.abs(s1.y - f1.y) <= 8, 'поиск и фильтры в одной строке');
+  // подписи фильтров остаются для скринридеров
+  eq(await page.locator('.filters-box label:has-text("Параллель")').count(), 1, 'подпись фильтра есть в разметке');
+  // строки таблицы плотные
+  assert((await box('table.data tbody tr')).h <= 42, 'строка таблицы не выше 42px');
+});
+
 await scenario('Все страницы на четырёх размерах экрана: без горизонтальной прокрутки и ошибок в консоли', async (page) => {
   await loadDemo(page);
   const hashes = ['#/', '#/rounds', '#/classes', classHash('7A'), '#/students', '#/staff', '#/new-year', '#/history', '#/reports', '#/archive', '#/import', '#/access', '#/settings', '#/search?q=7A'];

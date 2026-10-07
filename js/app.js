@@ -29,6 +29,7 @@ import { listRequests } from './services/access.js';
 import { enterPage, countUp } from './ui/anim.js';
 import { THEMES, getPref, cyclePref, onThemeChange } from './ui/theme.js';
 import { icon } from './ui/icons.js';
+import { yearView } from './domain/stats.js';
 
 // Автотесты (WebDriver) работают без анимации: так проверки не зависят от движения элементов. Включить — window.__LYCEUM_ANIMATE__ = true.
 if (navigator.webdriver && window.__LYCEUM_ANIMATE__ !== true) document.documentElement.classList.add('no-anim');
@@ -58,10 +59,13 @@ const NAV = [
   { label: 'Система', items: [['import', '/import', 'Импорт и экспорт', 'swap'], ['access', '/access', 'Доступ', 'shield', true], ['settings', '/settings', 'Настройки', 'sliders']] },
 ];
 
+// Разделы, у которых в меню справа показано число записей (как в привычных рабочих программах).
+const COUNTED = new Set(['classes', 'students', 'staff']);
+
 function buildNav(nav) {
-  nav.replaceChildren(...NAV.map((g) => h('div', { class: 'nav-group', role: 'group', 'aria-label': g.label || 'Основные разделы' },
+  nav.replaceChildren(...NAV.map((g, gi) => h('div', { class: `nav-group${gi === NAV.length - 1 ? ' nav-group-end' : ''}`, role: 'group', 'aria-label': g.label || 'Основные разделы' },
     g.label ? h('div', { class: 'nav-group-label', 'aria-hidden': 'true' }, g.label) : null,
-    g.items.map(([route, path, label, ic, owner]) => h('a', { href: `#${path}`, 'data-route': route, title: label, class: owner ? 'owner-only' : null }, icon(ic, 18), h('span', { class: 'nav-label' }, label), route === 'access' ? h('span', { class: 'nav-count', 'aria-label': 'Новых запросов' }) : null)))));
+    g.items.map(([route, path, label, ic, owner]) => h('a', { href: `#${path}`, 'data-route': route, title: label, class: owner ? 'owner-only' : null }, icon(ic, 18), h('span', { class: 'nav-label' }, label), COUNTED.has(route) ? h('span', { class: 'nav-n', 'data-n': route }) : null, route === 'access' ? h('span', { class: 'nav-count', 'aria-label': 'Новых запросов' }) : null)))));
 }
 
 const DAY = 24 * 3600 * 1000;
@@ -194,6 +198,10 @@ async function main() {
     syncBtn.replaceChildren(h('span', { class: 'dot' }), h('span', null, syncText));
     syncBtn.title = live ? `${d.text}${live.status.lastOkAt ? `. Последнее обновление: ${new Date(live.status.lastOkAt).toLocaleTimeString('ru-RU')}` : ''}` : d.text;
     $('#storageNote').textContent = db.kind === 'indexeddb' ? 'Данные хранятся в этом браузере' : 'Хранение отключено!';
+    $('#storageFoot').toggleAttribute('data-bad', db.kind !== 'indexeddb');
+    const v = yearView(store.state, s.currentYearId);
+    const counts = { classes: v.classCount, students: v.total, staff: store.state.staff.filter((x) => !x.archived).length };
+    for (const n of $$('#nav .nav-n')) n.textContent = String(counts[n.dataset.n] ?? '');
 
     const banners = [];
     if (db.kind !== 'indexeddb') banners.push(h('div', { class: 'banner danger', role: 'alert' }, h('div', null, h('strong', null, 'Данные не сохраняются. '), `Хранилище браузера (IndexedDB) недоступно${db.fallbackReason ? ` (${db.fallbackReason})` : ''}. Возможно, включён приватный режим. Всё, что вы введёте, пропадёт после закрытия вкладки — экспортируйте данные в JSON.`)));

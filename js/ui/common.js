@@ -27,7 +27,8 @@ export const btn = (label, onclick, kind = '', extra = {}) => {
 };
 export const link = (label, href, kind = '', extra = {}) => {
   const { icon: ic, ...attrs } = extra;
-  return h('a', { class: btnClass(kind, !label && !!ic), href, ...attrs }, btnContent(label, ic));
+  const names = ic && label ? { 'aria-label': label, title: label } : {};
+  return h('a', { class: btnClass(kind, !label && !!ic), href, ...names, ...attrs }, btnContent(label, ic));
 };
 
 export function classLink(cls, text) {
