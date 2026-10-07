@@ -1,0 +1,11 @@
+.sidebar, .topbar, .banners, .toasts, .backdrop, .no-print, .toolbar, .tabs, .btn, .skip-link { display: none !important; }
+body { background: #fff; font-size: 12px; }
+main { padding: 0; max-width: none; }
+.print-only { display: block !important; margin-bottom: 8px; }
+.card { border: 0; padding: 0; }
+table.data { font-size: 11px; }
+table.data thead { display: table-header-group; }
+table.data tr { break-inside: avoid; }
+table.data td.actions, table.data th.actions { display: none; }
+details > * { display: block; }
+.chart-box { display: none; }

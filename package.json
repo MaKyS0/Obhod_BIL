@@ -1,0 +1,15 @@
+{
+  "name": "obhod_bil",
+  "private": true,
+  "type": "module",
+  "description": "Обход BIL — статический сайт учёта классов, учеников и персонала лицея",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.mjs",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "serve": "node tests/e2e/server.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  },
+  "engines": { "node": ">=20" }
+}

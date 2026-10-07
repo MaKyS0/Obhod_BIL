@@ -1,0 +1,9 @@
+node_modules
+test-results
+.DS_Store
+
+# Исходные таблицы и расшифрованные данные лицея никогда не коммитим
+*.xlsx
+*.xls
+data/private/
+data/*.plain.json

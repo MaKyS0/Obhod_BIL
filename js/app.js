@@ -1,0 +1,154 @@
+// Точка входа: открытие базы, первый запуск, маршрутизация, общий каркас страницы.
+import { openDb } from './core/db.js';
+import { createStore } from './core/store.js';
+import { createRouter } from './core/router.js';
+import { createRepo } from './services/repo.js';
+import { startAutoSync, syncNow, describeSync } from './services/sync.js';
+import { saveBackupFile } from './services/backup-file.js';
+import { h, $, $$ } from './ui/dom.js';
+import { toast, toastError } from './ui/toast.js';
+import { yearLabel } from './domain/years.js';
+import * as dashboard from './pages/dashboard.js';
+import * as classes from './pages/classes.js';
+import * as classDetail from './pages/class-detail.js';
+import * as students from './pages/students.js';
+import * as staff from './pages/staff.js';
+import * as newYear from './pages/new-year.js';
+import * as history from './pages/history.js';
+import * as reports from './pages/reports.js';
+import * as archive from './pages/archive.js';
+import * as importExport from './pages/import-export.js';
+import * as settings from './pages/settings.js';
+import * as search from './pages/search.js';
+
+const ROUTES = [
+  ['dashboard', '/', dashboard],
+  ['classes', '/classes', classes],
+  ['classes', '/class/:id', classDetail],
+  ['students', '/students', students],
+  ['staff', '/staff', staff],
+  ['new-year', '/new-year', newYear],
+  ['history', '/history', history],
+  ['history', '/history/:yearId', history],
+  ['reports', '/reports', reports],
+  ['archive', '/archive', archive],
+  ['import', '/import', importExport],
+  ['settings', '/settings', settings],
+  ['search', '/search', search],
+].map(([name, path, mod]) => ({ name, path, render: mod.render, title: mod.title }));
+
+const DAY = 24 * 3600 * 1000;
+
+async function main() {
+  const view = $('#view');
+  let versionBanner = false;
+  const db = await openDb({ onVersionChange: () => { versionBanner = true; updateChrome(); } });
+  const store = createStore(db);
+  await store.load();
+  const repo = createRepo(store);
+  await repo.initialize();
+  store.listenOtherTabs();
+
+  const router = createRouter({
+    view,
+    routes: ROUTES,
+    makeContext: ({ view: v, params, query, route }) => ({ view: v, params, query, route, store, repo, router, get state() { return store.state; }, refresh: () => router.refresh() }),
+    onChange: (route) => {
+      $$('#nav a').forEach((a) => (a.dataset.route === route.name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+      const r = ROUTES.find((x) => x.name === route.name);
+      document.title = `${(r && r.title) || 'Учёт лицея'} — ${store.state.settings.lyceumName}`;
+      closeNav();
+      window.scrollTo(0, 0);
+      const inSearch = route.name === 'search';
+      if (!inSearch && document.activeElement !== searchInput) searchInput.value = '';
+    },
+  });
+
+  // ---------- каркас ----------
+  const searchInput = $('#globalSearch');
+  const nav = $('#nav');
+  void nav;
+  function openNav() {
+    document.body.classList.add('nav-open');
+    $('#backdrop').hidden = false;
+    $('#menuBtn').setAttribute('aria-expanded', 'true');
+  }
+  function closeNav() {
+    document.body.classList.remove('nav-open');
+    $('#backdrop').hidden = true;
+    $('#menuBtn').setAttribute('aria-expanded', 'false');
+  }
+  $('#menuBtn').addEventListener('click', () => (document.body.classList.contains('nav-open') ? closeNav() : openNav()));
+  $('#backdrop').addEventListener('click', closeNav);
+  document.addEventListener('keydown', (e) => e.key === 'Escape' && closeNav());
+
+  let searchTimer = null;
+  const goSearch = () => {
+    const q = searchInput.value.trim();
+    clearTimeout(searchTimer);
+    const target = q ? `#/search?q=${encodeURIComponent(q)}` : '#/';
+    if (router.current?.name === 'search') router.go(target, { replace: true });
+    else if (q) location.hash = target;
+  };
+  searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(goSearch, 200); });
+  $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); goSearch(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') && !document.querySelector('dialog[open]')) { e.preventDefault(); searchInput.focus(); }
+  });
+
+  const syncBtn = $('#syncStatus');
+  syncBtn.addEventListener('click', async () => {
+    const st = store.state.settings;
+    if (!st.sheetsUrl) { location.hash = '#/settings'; return; }
+    syncBtn.disabled = true;
+    const r = await syncNow(store, repo, { reason: 'manual' });
+    syncBtn.disabled = false;
+    toast(r.ok ? 'Данные отправлены в Google Таблицы' : r.error, r.ok ? 'success' : 'error');
+  });
+
+  function updateChrome() {
+    const s = store.state.settings;
+    $('#brandName').textContent = s.lyceumName;
+    $('#yearBadge').replaceChildren('Учебный год ', h('strong', null, yearLabel(s.currentYearId)));
+    const d = describeSync(s);
+    syncBtn.dataset.kind = d.kind;
+    syncBtn.textContent = d.kind === 'off' ? 'Google: не подключено' : d.kind === 'ok' ? 'Google: синхронизировано' : d.kind === 'error' ? 'Google: ошибка' : 'Google: ждёт отправки';
+    syncBtn.title = d.text;
+    $('#storageNote').textContent = db.kind === 'indexeddb' ? 'Данные хранятся в этом браузере' : 'Хранение отключено!';
+
+    const banners = [];
+    if (db.kind !== 'indexeddb') banners.push(h('div', { class: 'banner danger', role: 'alert' }, h('div', null, h('strong', null, 'Данные не сохраняются. '), `Хранилище браузера (IndexedDB) недоступно${db.fallbackReason ? ` (${db.fallbackReason})` : ''}. Возможно, включён приватный режим. Всё, что вы введёте, пропадёт после закрытия вкладки — экспортируйте данные в JSON.`)));
+    if (versionBanner) banners.push(h('div', { class: 'banner warn' }, h('div', null, 'Сайт обновился в другой вкладке. Перезагрузите страницу.'), h('button', { class: 'btn btn-sm', type: 'button', onclick: () => location.reload() }, 'Перезагрузить')));
+    const exp = s.lastExportAt ? new Date(s.lastExportAt).getTime() : 0;
+    if (store.state.students.length && Date.now() - exp > 14 * DAY && router.current?.name !== 'settings') {
+      banners.push(h('div', { class: 'banner info' }, h('div', null, s.lastExportAt ? 'Резервная копия в файл не скачивалась больше 14 дней.' : 'Вы ещё не сохраняли резервную копию в файл. Данные хранятся только в этом браузере.'),
+        h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => { try { await saveBackupFile(repo); toast('Резервная копия сохранена'); } catch (e) { toastError(e); } } }, 'Скачать копию')));
+    }
+    $('#banner').replaceChildren(...banners);
+  }
+
+  store.on((detail) => {
+    updateChrome();
+    if (!detail.system) router.refresh();
+  });
+  updateChrome();
+
+  // Постоянное хранение запрашиваем по первому действию пользователя.
+  document.addEventListener('pointerdown', () => { try { navigator.storage?.persist?.(); } catch { /* ignore */ } }, { once: true });
+
+  window.__lyceum = { store, repo, router };
+  await router.start();
+  updateChrome();
+  startAutoSync(store, repo);
+}
+
+main().catch((e) => {
+  console.error(e);
+  const view = document.getElementById('view');
+  if (view) {
+    const box = document.createElement('div');
+    box.className = 'notice danger';
+    box.textContent = `Не удалось запустить приложение: ${e.message}`;
+    view.replaceChildren(box);
+  }
+});
