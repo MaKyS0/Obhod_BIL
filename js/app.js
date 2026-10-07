@@ -4,6 +4,7 @@ import { createStore } from './core/store.js';
 import { createRouter } from './core/router.js';
 import { createRepo } from './services/repo.js';
 import { startAutoSync, syncNow, describeSync } from './services/sync.js';
+import { createLive, describeLive } from './services/live.js';
 import { saveBackupFile } from './services/backup-file.js';
 import { h, $, $$ } from './ui/dom.js';
 import { toast, toastError } from './ui/toast.js';
@@ -57,11 +58,23 @@ async function main() {
   // Допуск посетителей: если в js/config.js указан адрес скрипта, без решения владельца сайт не открывается.
   const endpoint = accessEndpoint();
   const access = { endpoint, owner: !endpoint, pending: 0, onPending: null };
+  let live = null;
   if (endpoint) {
     const { role } = await runGate({ endpoint, store, repo, db, view });
     access.owner = role === 'owner';
     if (access.owner) document.body.dataset.owner = '1';
     else watchAccess(endpoint);
+    view.replaceChildren();
+    // Общая база: все допущенные устройства работают с одними данными (см. services/live.js).
+    live = createLive({
+      store,
+      endpoint,
+      onForbidden: () => location.reload(), // доступ закрыт — экран допуска сотрёт локальные данные
+      onConflict: () => toast('Часть ваших изменений не применена: те же данные (например, учебный год) успел изменить другой пользователь. Экран обновлён.', 'error'),
+    });
+    const firstJoin = store.state.settings.liveRev == null;
+    if (firstJoin) view.replaceChildren(h('p', { class: 'loading' }, 'Загрузка общих данных…'));
+    await live.start({ wait: firstJoin });
     view.replaceChildren();
   }
 
@@ -117,19 +130,20 @@ async function main() {
     const st = store.state.settings;
     if (!st.sheetsUrl) { location.hash = '#/settings'; return; }
     syncBtn.disabled = true;
-    const r = await syncNow(store, repo, { reason: 'manual' }); // пустую базу сразу не отправляет — защита таблицы
+    if (live) await live.tick(); // отправить своё и забрать чужое прямо сейчас
+    const r = live && !access.owner ? { ok: live.status.state === 'online', error: live.status.error } : await syncNow(store, repo, { reason: 'manual' }); // владелец ещё и обновляет читаемые листы таблицы; пустую базу сразу не отправляет — защита таблицы
     syncBtn.disabled = false;
-    toast(r.ok ? 'Данные отправлены в Google Таблицы' : r.error, r.ok ? 'success' : 'error');
+    toast(r.ok ? (live ? 'Общая база актуальна' : 'Данные отправлены в Google Таблицы') : r.error, r.ok ? 'success' : 'error');
   });
 
   function updateChrome() {
     const s = store.state.settings;
     $('#brandName').textContent = s.lyceumName;
     $('#yearBadge').replaceChildren('Учебный год ', h('strong', null, yearLabel(s.currentYearId)));
-    const d = describeSync(s);
+    const d = live ? describeLive(live.status) : describeSync(s);
     syncBtn.dataset.kind = d.kind;
-    syncBtn.textContent = d.kind === 'off' ? 'Google: не подключено' : d.kind === 'ok' ? 'Google: синхронизировано' : d.kind === 'error' ? 'Google: ошибка' : 'Google: ждёт отправки';
-    syncBtn.title = d.text;
+    syncBtn.textContent = live ? d.text : d.kind === 'off' ? 'Google: не подключено' : d.kind === 'ok' ? 'Google: синхронизировано' : d.kind === 'error' ? 'Google: ошибка' : 'Google: ждёт отправки';
+    syncBtn.title = live ? `${d.text}${live.status.lastOkAt ? `. Последнее обновление: ${new Date(live.status.lastOkAt).toLocaleTimeString('ru-RU')}` : ''}` : d.text;
     $('#storageNote').textContent = db.kind === 'indexeddb' ? 'Данные хранятся в этом браузере' : 'Хранение отключено!';
 
     const banners = [];
@@ -143,10 +157,21 @@ async function main() {
     $('#banner').replaceChildren(...banners);
   }
 
+  // Изменения, пришедшие от других людей, обновляют экран, но не мешают тому, кто сейчас вводит данные:
+  // пока открыто окно или курсор стоит в поле формы, обновление откладывается.
+  let refreshTimer = null;
+  const typing = () => !!document.querySelector('dialog[open]') || (view.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));
+  const refreshWhenIdle = () => {
+    clearTimeout(refreshTimer);
+    if (typing()) refreshTimer = setTimeout(refreshWhenIdle, 1500);
+    else router.refresh();
+  };
   store.on((detail) => {
     updateChrome();
-    if (!detail.system) router.refresh();
+    if (detail.reason === 'remote') refreshWhenIdle();
+    else if (!detail.system) router.refresh();
   });
+  if (live) live.subscribe(updateChrome);
   updateChrome();
 
   // Постоянное хранение запрашиваем по первому действию пользователя.
@@ -167,7 +192,7 @@ async function main() {
   window.__lyceum = { store, repo, router };
   await router.start();
   updateChrome();
-  startAutoSync(store, repo);
+  if (!live) startAutoSync(store, repo); // с общей базой отдельная выгрузка не нужна: сервер сам хранит актуальную версию
 }
 
 main().catch((e) => {

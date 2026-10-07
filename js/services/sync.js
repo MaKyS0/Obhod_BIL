@@ -34,7 +34,8 @@ export async function syncNow(store, repo, { reason = 'manual', allowEmpty = fal
   // Защита: пустая база не должна затирать данные в таблице (например, в новом браузере владельца).
   if (!allowEmpty && isEmptyDb(store.state)) return { ok: false, empty: true, error: 'В этом браузере нет данных — выгрузка стёрла бы таблицу. Сначала загрузите данные (Импорт и экспорт).' };
   const versionAtStart = store.version;
-  const payload = buildSheetsPayload(store.state, { includeBackup: s.includeBackupInSync });
+  // В режиме общей базы полную копию хранит сама общая база (её версию ведёт сервер), поэтому отсюда она не отправляется.
+  const payload = buildSheetsPayload(store.state, { includeBackup: s.includeBackupInSync && s.liveRev == null });
   try {
     const { json, confirmed } = await post(s.sheetsUrl, JSON.stringify(payload));
     if (!json.ok) throw new Error(json.error === 'auth' ? 'Неверный токен доступа' : json.error || 'Сервер отклонил данные');

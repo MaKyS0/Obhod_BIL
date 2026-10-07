@@ -5,6 +5,11 @@ import { yearFromDate } from './years.js';
 export const DATA_STORES = ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments', 'promotions'];
 export const SCHEMA_VERSION = 1;
 
+// Настройки, общие для всех устройств (остальное — локальное: адрес и токен, статусы, служебные поля общей базы).
+export const SHARED_SETTINGS = ['lyceumName', 'currentYearId', 'letters', 'minGrade', 'maxGrade', 'lastPromotionId', 'changesSincePromotion'];
+// Служебные поля общей базы: хранятся только в этом браузере и не попадают в экспорт.
+export const LIVE_SETTINGS = ['liveRev', 'liveOutbox'];
+
 export function defaultSettings(now = new Date()) {
   return {
     key: 'settings',
@@ -26,6 +31,8 @@ export function defaultSettings(now = new Date()) {
     changesSincePromotion: 0,
     initialized: false,
     schemaVersion: SCHEMA_VERSION,
+    liveRev: null, // номер версии общей базы, с которой совпадает этот браузер (null — ещё не подключён)
+    liveOutbox: [], // изменения, ещё не отправленные в общую базу
   };
 }
 

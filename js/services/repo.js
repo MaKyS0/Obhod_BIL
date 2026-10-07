@@ -1,5 +1,5 @@
 // Все изменения данных. Каждая операция формирует пакет изменений и атомарно применяет его через store.commit().
-import { getIndex, emptyChanges, addPut, addDel, DATA_STORES } from '../domain/state.js';
+import { getIndex, emptyChanges, addPut, addDel, DATA_STORES, LIVE_SETTINGS } from '../domain/state.js';
 import { allClassSlots, classId, makeClass, compareClasses } from '../domain/classes.js';
 import { dedupeKey, fullName, nameKey } from '../domain/people.js';
 import { parseDate, todayISO, nowISO } from '../domain/dates.js';
@@ -383,6 +383,7 @@ export function createRepo(store) {
       const changes = { clear: [...DATA_STORES], put: {}, del: {}, settings: null };
       for (const s of DATA_STORES) changes.put[s] = data[s];
       changes.settings = { ...defaultSettings(), ...data.settings, ...(data.settings.sheetsUrl ? {} : { sheetsUrl: keep.sheetsUrl }), sheetsToken: keep.sheetsToken, initialized: true, dirtySinceSync: true, key: 'settings' };
+      for (const k of LIVE_SETTINGS) delete changes.settings[k]; // служебные поля общей базы остаются как были
       await store.commit(changes, { system: true });
       await api.initialize();
     },
@@ -398,6 +399,7 @@ export function createRepo(store) {
       await store.createBackup('before-clear');
       const s = S().settings;
       const fresh = { ...defaultSettings(), lyceumName: s.lyceumName, sheetsUrl: s.sheetsUrl, sheetsToken: s.sheetsToken, autoSync: s.autoSync, includeBackupInSync: s.includeBackupInSync, dirtySinceSync: true, initialized: true, key: 'settings' };
+      for (const k of LIVE_SETTINGS) delete fresh[k];
       // Очистка и создание пустого текущего года — одной транзакцией, без промежуточного «пустого» состояния.
       const changes = initialChanges(fresh, { years: new Map(), classes: new Map() });
       changes.clear = [...DATA_STORES];

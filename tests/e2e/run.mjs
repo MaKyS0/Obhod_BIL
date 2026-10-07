@@ -404,7 +404,7 @@ await scenario('Зашифрованные данные: выбор файла, 
 const ENDPOINT = 'https://script.google.com/macros/s/TEST/exec';
 async function accessSite(sb, { offline = { on: false } } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
-  await context.addInitScript(`window.__LYCEUM_ACCESS_ENDPOINT__ = ${JSON.stringify(ENDPOINT)}; window.__LYCEUM_POLL_MS__ = 300;`);
+  await context.addInitScript(`window.__LYCEUM_ACCESS_ENDPOINT__ = ${JSON.stringify(ENDPOINT)}; window.__LYCEUM_POLL_MS__ = 300; window.__LYCEUM_LIVE_MS__ = 400; window.__LYCEUM_KICK_MS__ = 50; window.__LYCEUM_SHEETS_MS__ = 600;`);
   const errors = [];
   context.on('page', (pg) => {
     pg.on('console', (m) => m.type() === 'error' && !/ERR_FAILED|Failed to load resource/.test(m.text()) && errors.push(`console: ${m.text()}`));
@@ -520,6 +520,98 @@ await scenario('Допуск: запрос → письмо владельцу �
     off.on = false;
     await v3.page.click('#retryBtn');
     await v3.page.waitForSelector('h1:has-text("Вход по разрешению")');
+    const all = opened.flatMap((x) => x.errors);
+    if (all.length) throw new Error(`Ошибки в консоли браузера:\n  ${all.join('\n  ')}`);
+  } finally {
+    for (const x of opened) await x.context.close();
+  }
+});
+
+await scenario('Общая база: два устройства видят одни данные, правки доходят без перезагрузки, ввод не прерывается, отзыв закрывает доступ', async () => {
+  const sb = makeSandbox();
+  const token = gasRun(sb, 'setup()');
+  const opened = [];
+  const site = async (o) => { const x = await accessSite(sb, o); opened.push(x); return x; };
+  const addStudent = async (page, last, first) => {
+    await go(page, classHash('7A'));
+    await page.click('text=Добавить ученика');
+    await modal(page).locator('input[name=lastName]').fill(last);
+    await modal(page).locator('input[name=firstName]').fill(first);
+    await modal(page).locator('button:has-text("Добавить")').click();
+    await page.waitForSelector('dialog.modal[open]', { state: 'detached' });
+  };
+  try {
+    // --- владелец входит и загружает данные (первое устройство)
+    const o = await site();
+    await o.page.goto(srv.url);
+    await o.page.click('#ownerLoginBtn');
+    await o.page.fill('input[name=ownerToken]', token);
+    await o.page.click('#ownerLoginSubmit');
+    await o.page.waitForSelector('#sidebar', { state: 'visible' });
+    await o.page.waitForFunction(() => window.__lyceum);
+    await go(o.page, '#/settings');
+    await o.page.click('#loadDemoBtn');
+    await o.page.waitForFunction(() => window.__lyceum.store.state.students.length > 300);
+    const total = await state(o.page, 'S.students.length');
+    await o.page.waitForFunction(() => window.__lyceum.store.state.settings.liveRev > 0 && window.__lyceum.store.state.settings.liveOutbox.length === 0);
+    assert(/Общая база: актуально/.test(await o.page.textContent('#syncStatus')), 'в шапке «Общая база: актуально»');
+
+    // --- посетитель: запрос, допуск — и у него сразу те же данные, без импорта
+    const v = await site();
+    await v.page.goto(srv.url);
+    await v.page.fill('input[name=visitorName]', 'Мария Петрова');
+    await v.page.click('#requestAccessBtn');
+    await v.page.waitForSelector('h1:has-text("Запрос отправлен")');
+    await go(o.page, '#/access');
+    await o.page.waitForSelector('tr:has-text("Мария Петрова")');
+    await o.page.click('tr:has-text("Мария Петрова") [data-act=allow]');
+    await v.page.waitForSelector('#sidebar', { state: 'visible' });
+    await v.page.waitForFunction((n) => window.__lyceum && window.__lyceum.store.state.students.length === n, total);
+    eq(await state(v.page, 'S.settings.currentYearId'), await state(o.page, 'S.settings.currentYearId'), 'тот же учебный год');
+
+    // --- правка посетителя доходит до владельца без перезагрузки и видна в списке
+    await go(o.page, classHash('7A'));
+    await addStudent(v.page, 'Живов', 'Посетитель');
+    await o.page.waitForSelector('tr:has-text("Живов Посетитель")');
+    eq(await state(o.page, "S.students.filter(s => s.lastName === 'Живов').length"), 1, 'у владельца одна запись');
+
+    // --- владелец вводит данные в окне, пока приходит чужая правка: окно не закрывается, текст не теряется
+    await o.page.click('text=Добавить ученика');
+    await modal(o.page).locator('input[name=lastName]').fill('Черновиков');
+    await addStudent(v.page, 'Второй', 'Посетитель');
+    await o.page.waitForFunction(() => window.__lyceum.store.state.students.some((s) => s.lastName === 'Второй'));
+    await o.page.waitForTimeout(2200);
+    eq(await modal(o.page).count(), 1, 'окно владельца осталось открытым');
+    eq(await modal(o.page).locator('input[name=lastName]').inputValue(), 'Черновиков', 'введённый текст не потерян');
+    await modal(o.page).locator('input[name=firstName]').fill('Владелец');
+    await modal(o.page).locator('button:has-text("Добавить")').click();
+    await o.page.waitForSelector('dialog.modal[open]', { state: 'detached' });
+    await o.page.waitForSelector('tr:has-text("Второй Посетитель")');
+    await v.page.waitForFunction(() => window.__lyceum.store.state.students.some((s) => s.lastName === 'Черновиков'));
+    await go(v.page, classHash('7A'));
+    await v.page.waitForSelector('tr:has-text("Черновиков Владелец")');
+
+    // --- оба состояния идентичны, а читаемые листы таблицы обновились
+    const ids = async (p) => (await state(p, 'S.students.map((s) => s.id).sort().join()'));
+    eq(await ids(o.page), await ids(v.page), 'у обоих одинаковый список учеников');
+    await o.page.waitForFunction(() => window.__lyceum.store.state.settings.liveOutbox.length === 0);
+    await v.page.waitForFunction(() => window.__lyceum.store.state.settings.liveOutbox.length === 0);
+    await new Promise((r) => setTimeout(r, 1800));
+    assert(sb.sheets.has('Ученики') && sb.sheets.get('Ученики').lastRow > total, 'лист «Ученики» заполнен сервером из общей базы');
+    assert(JSON.parse(gasCall(sb, 'doGet', { parameter: { action: 'backup', token } }).backup).students.length === total + 3, 'на сервере все 3 новых ученика');
+
+    // --- посетитель отчисляет ученика — у владельца он пропадает из класса
+    await v.page.locator('tr:has-text("Живов Посетитель")').locator('button:has-text("Удалить")').click();
+    await modal(v.page).locator('button:has-text("Отчислить в архив")').click();
+    await o.page.waitForSelector('tr:has-text("Живов Посетитель")', { state: 'detached' });
+
+    // --- отзыв: устройство посетителя само закрывается и стирает данные
+    await go(o.page, '#/access');
+    await o.page.click('tr:has-text("Мария Петрова") [data-act=revoke]');
+    await o.page.locator('dialog.modal[open] button:has-text("Отозвать доступ")').click();
+    await v.page.waitForSelector('h1:has-text("Доступ отозван")', { timeout: 8000 });
+    await v.page.waitForTimeout(300);
+    eq(await v.page.evaluate(async () => (await indexedDB.databases()).some((d) => d.name === 'lyceum-db')), false, 'база отозванного устройства стёрта');
     const all = opened.flatMap((x) => x.errors);
     if (all.length) throw new Error(`Ошибки в консоли браузера:\n  ${all.join('\n  ')}`);
   } finally {

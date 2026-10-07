@@ -9,6 +9,7 @@ const CODE = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.ur
 
 export function makeSandbox({ now = () => Date.now() } = {}) {
   const props = {};
+  const cache = {};
   const sheets = new Map();
   const triggers = [];
   const mails = [];
@@ -28,6 +29,7 @@ export function makeSandbox({ now = () => Date.now() } = {}) {
         setValue: (v) => rg.setValues([[v]]),
         setFontWeight: () => rg,
         setBackground: () => rg,
+        getValue: () => sh.cells[`${r},${c}`] ?? '',
         getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => sh.cells[`${r + i},${c + j}`] ?? '')),
       };
       return rg;
@@ -68,7 +70,8 @@ export function makeSandbox({ now = () => Date.now() } = {}) {
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); } }) },
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById: () => ss, flush: () => {}, getUi: () => { throw new Error('no ui'); } },
-    LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => {}, tryLock: () => true, releaseLock: () => {} }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = String(v); }, remove: (k) => { delete cache[k]; } }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ text: t, setMimeType() { return this; }, getContent: () => t }) },
     ScriptApp: { getProjectTriggers: () => triggers, deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1), newTrigger: (fn) => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create: () => triggers.push({ getHandlerFunction: () => fn }) }) }) }) }) },
     MailApp: { sendEmail: (...a) => mails.push(a) },

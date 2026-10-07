@@ -1,6 +1,8 @@
 // Состояние приложения в памяти + запись в базу + уведомления подписчиков и других вкладок.
 import { applyChanges, defaultSettings, emptyState, DATA_STORES, invalidate } from '../domain/state.js';
 import { exportData } from '../domain/backup.js';
+import { sharedBatch } from '../domain/live.js';
+import { uid } from '../domain/ids.js';
 
 const KEEP_BACKUPS = 10;
 
@@ -9,6 +11,8 @@ export function createStore(db) {
   const listeners = new Set();
   let channel = null;
   let version = 0;
+  let live = false; // общая база подключена: изменения данных копятся в очереди отправки (settings.liveOutbox)
+  let chain = Promise.resolve(); // все записи идут по очереди, чтобы пакеты не перемешивались
 
   const emit = (detail) => listeners.forEach((fn) => fn(detail));
 
@@ -22,25 +26,48 @@ export function createStore(db) {
     emit({ reason: 'load', ...detail });
   }
 
-  /**
-   * Применяет пакет изменений атомарно: сначала база, потом память.
-   * opts.system — служебная запись (статус синхронизации и т. п.): не помечает данные «изменёнными».
-   * opts.expectCurrentYear — проверка текущего года внутри транзакции.
-   */
-  async function commit(changes, opts = {}) {
+  async function doCommit(changes, opts) {
     const patch = { ...(changes.settings || {}) };
-    if (!opts.system) {
+    if (!opts.system && !opts.remote) {
       if (!('changesSincePromotion' in patch) && state.settings.lastPromotionId) patch.changesSincePromotion = (state.settings.changesSincePromotion || 0) + 1;
       if (!('dirtySinceSync' in patch)) patch.dirtySinceSync = true;
+    }
+    if (live && !opts.remote) {
+      // Изменение данных → в очередь отправки, в той же транзакции, что и сама запись.
+      const batch = sharedBatch(changes, patch);
+      if (batch) patch.liveOutbox = [...(patch.liveOutbox ?? state.settings.liveOutbox ?? []), { ...batch, expect: opts.expectCurrentYear || null, bid: uid() }];
     }
     const newSettings = { ...state.settings, ...patch, key: 'settings' };
     const full = { put: { ...(changes.put || {}), meta: [newSettings] }, del: changes.del || {}, clear: changes.clear || [] };
     await db.apply(full, { expectCurrentYear: opts.expectCurrentYear });
     applyChanges(state, { put: changes.put, del: changes.del, clear: changes.clear, settings: patch });
-    if (!opts.system) version++;
-    emit({ reason: 'commit', system: !!opts.system });
+    if (!opts.system && !opts.remote) version++;
+    // Изменения, пришедшие от других людей, обновляют экран (reason: 'remote'); тихие — только служебные поля.
+    emit({ reason: opts.remote ? 'remote' : 'commit', system: opts.remote ? !!opts.quiet : !!opts.system });
     if (channel && !opts.silent) channel.postMessage({ type: 'changed' });
   }
+
+  const enqueue = (fn) => {
+    const p = chain.then(fn);
+    chain = p.catch(() => {});
+    return p;
+  };
+
+  /**
+   * Применяет пакет изменений атомарно: сначала база, потом память.
+   * opts.system — служебная запись (статус синхронизации и т. п.): не помечает данные «изменёнными».
+   * opts.expectCurrentYear — проверка текущего года внутри транзакции.
+   * opts.remote — изменения пришли из общей базы: не попадают в очередь отправки.
+   */
+  const commit = (changes, opts = {}) => enqueue(() => doCommit(changes, opts));
+
+  // Как commit, но пакет считается по свежему состоянию уже внутри очереди (compute возвращает { changes, opts } или null).
+  const commitFrom = (compute) =>
+    enqueue(async () => {
+      const r = compute(state);
+      if (r) await doCommit(r.changes, r.opts || {});
+      return !!r;
+    });
 
   async function createBackup(reason = 'manual') {
     const data = exportData(state);
@@ -66,8 +93,15 @@ export function createStore(db) {
     get version() {
       return version;
     },
+    get live() {
+      return live;
+    },
+    setLive(v) {
+      live = !!v;
+    },
     load,
     commit,
+    commitFrom,
     createBackup,
     listenOtherTabs,
     on(fn) {

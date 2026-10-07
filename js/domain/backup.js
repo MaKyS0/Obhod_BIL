@@ -4,9 +4,12 @@ import { DATA_STORES, SCHEMA_VERSION } from './state.js';
 export const FORMAT = 'lyceum-registry';
 
 export function exportData(state, { now = new Date().toISOString() } = {}) {
-  const { sheetsToken, key, ...settings } = state.settings; // токен синхронизации в копию не попадает
+  // токен синхронизации и служебные поля общей базы в копию не попадают
+  const { sheetsToken, key, liveRev, liveOutbox, ...settings } = state.settings;
   void sheetsToken;
   void key;
+  void liveRev;
+  void liveOutbox;
   const out = { format: FORMAT, version: SCHEMA_VERSION, exportedAt: now, app: 'Учёт лицея 1.0', settings };
   for (const s of DATA_STORES) out[s] = state[s].map((x) => ({ ...x }));
   return out;
