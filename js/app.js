@@ -26,6 +26,10 @@ import * as rounds from './pages/rounds.js';
 import { accessEndpoint } from './config.js';
 import { runGate, watchAccess } from './ui/gate.js';
 import { listRequests } from './services/access.js';
+import { enterPage, countUp } from './ui/anim.js';
+
+// Автотесты (WebDriver) работают без анимации: так проверки не зависят от движения элементов. Включить — window.__LYCEUM_ANIMATE__ = true.
+if (navigator.webdriver && window.__LYCEUM_ANIMATE__ !== true) document.documentElement.classList.add('no-anim');
 
 const ROUTES = [
   ['dashboard', '/', dashboard],
@@ -96,6 +100,7 @@ async function main() {
       const r = ROUTES.find((x) => x.name === route.name);
       document.title = `${(r && r.title) || 'Учёт лицея'} — ${store.state.settings.lyceumName}`;
       closeNav();
+      if (!route.refreshed) { enterPage(view); countUp(view); }
       if (!route.refreshed) window.scrollTo(0, 0); // при обновлении той же страницы (чужая правка, своя отметка) прокрутка остаётся на месте
       const inSearch = route.name === 'search';
       if (!inSearch && document.activeElement !== searchInput) searchInput.value = '';

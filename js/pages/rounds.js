@@ -13,7 +13,7 @@ import { nStudents } from '../domain/plural.js';
 export const title = 'Вечерний обход';
 
 // Состояние экрана живёт между перерисовками (чужая правка перерисовывает страницу): открытые классы, дата, фильтр.
-const ui = { open: new Set(), date: null, onlyOpen: false };
+const ui = { open: new Set(), date: null, onlyOpen: false, fx: { done: null, open: null, tap: null }, prev: {} };
 
 export function render(ctx) {
   const { repo, view: el } = ctx;
@@ -23,7 +23,10 @@ export function render(ctx) {
 
   const head = pageHead({ title: 'Вечерний обход', sub: '…' });
   const sub = head.querySelector('.sub');
-  const summary = h('div', { class: 'card round-summary' });
+  const bar = h('i');
+  const progress = h('div', { class: 'round-progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-label': 'Отмечено учеников' }, bar);
+  const counts = h('div', { class: 'round-counts' });
+  const summary = h('div', { class: 'card round-summary' }, progress, counts); // полоса не пересоздаётся: ширина меняется плавно
   const list = h('div', { class: 'round-list' });
   const controls = h('div', { class: 'card round-controls' });
   el.append(head, controls, summary, list);
@@ -49,12 +52,17 @@ export function render(ctx) {
     sub.textContent = `${ui.date === today ? 'Сегодня' : formatDate(ui.date)} · отмечено ${totals.marked} из ${totals.total} · готово классов: ${v.doneClasses} из ${v.groups.length}`;
 
     const pct = totals.total ? Math.round((totals.marked / totals.total) * 100) : 0;
-    summary.replaceChildren(
-      h('div', { class: 'round-progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': totals.total, 'aria-valuenow': totals.marked, 'aria-label': 'Отмечено учеников' }, h('i', { style: `width:${pct}%` })),
-      h('div', { class: 'round-counts' },
-        ...ROUND_PLACES.map((p) => h('span', { class: `rc rc-${p.key}` }, `${p.label}: `, h('b', null, String(totals.byPlace[p.key])))),
-        h('span', { class: 'rc rc-none' }, 'Не отмечено: ', h('b', { id: 'roundUnmarked' }, String(totals.total - totals.marked)))),
-    );
+    bar.style.width = `${pct}%`;
+    progress.setAttribute('aria-valuemax', String(totals.total));
+    progress.setAttribute('aria-valuenow', String(totals.marked));
+    const num = (key, value) => {
+      const changed = key in ui.prev && ui.prev[key] !== value;
+      ui.prev[key] = value;
+      return h('b', { class: changed ? 'bump' : null, id: key === 'none' ? 'roundUnmarked' : null }, String(value));
+    };
+    counts.replaceChildren(
+      ...ROUND_PLACES.map((p) => h('span', { class: `rc rc-${p.key}` }, `${p.label}: `, num(p.key, totals.byPlace[p.key]))),
+      h('span', { class: 'rc rc-none' }, 'Не отмечено: ', num('none', totals.total - totals.marked)));
 
     const focusKey = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.rk : null;
     const groups = ui.onlyOpen ? v.groups.filter((g) => !g.done) : v.groups;
@@ -67,6 +75,7 @@ export function render(ctx) {
       return;
     }
     list.replaceChildren(...groups.map((g) => classSection(g)));
+    ui.fx = { done: null, open: null, tap: null }; // разовые эффекты сыграли — дальше перерисовки идут без них
     if (focusKey) {
       const again = list.querySelector(`[data-rk="${CSS.escape(focusKey)}"]`);
       if (again) again.focus({ preventScroll: true });
@@ -75,15 +84,15 @@ export function render(ctx) {
 
   function classSection(g) {
     const opened = ui.open.has(g.id);
-    const head = h('button', { type: 'button', class: 'round-head', 'aria-expanded': opened ? 'true' : 'false', 'data-class': g.id, onclick: () => { if (ui.open.has(g.id)) ui.open.delete(g.id); else ui.open.add(g.id); draw(); } },
+    const head = h('button', { type: 'button', class: 'round-head', 'aria-expanded': opened ? 'true' : 'false', 'data-class': g.id, onclick: () => { if (ui.open.has(g.id)) ui.open.delete(g.id); else { ui.open.add(g.id); ui.fx.open = g.id; } draw(); } },
       h('span', { class: 'round-class-name' }, g.name),
       h('span', { class: 'round-class-count' }, g.done ? `готово · ${nStudents(g.total)}` : `${g.marked} из ${g.total}`),
       h('span', { class: 'round-chevron', 'aria-hidden': 'true' }, opened ? '▴' : '▾'));
-    const sec = h('section', { class: 'round-class', 'data-done': g.done ? 'true' : 'false', 'data-class': g.id }, head);
+    const sec = h('section', { class: `round-class${ui.fx.done === g.id ? ' just-done' : ''}`, 'data-done': g.done ? 'true' : 'false', 'data-class': g.id }, head);
     if (!opened) return sec;
 
     const rest = g.students.filter((x) => !x.place).map((x) => x.student.id);
-    const body = h('div', { class: 'round-body' });
+    const body = h('div', { class: `round-body${ui.fx.open === g.id ? ' opening' : ''}` });
     if (rest.length > 1) {
       body.append(h('div', { class: 'round-bulk' }, btn(`Всем неотмеченным (${rest.length}): Ночует`, () => bulk(g, rest), 'sm', { 'data-bulk': g.id })));
     }
@@ -92,7 +101,7 @@ export function render(ctx) {
         h('span', { class: 'round-name' }, fullName(student)),
         h('div', { class: 'round-btns', role: 'group', 'aria-label': `Где ${fullName(student)}` },
           ...ROUND_PLACES.map((p) => h('button', {
-            type: 'button', class: `rp rp-${p.key}`, 'aria-pressed': place === p.key ? 'true' : 'false', 'data-rk': `${student.id}:${p.key}`,
+            type: 'button', class: `rp rp-${p.key}${ui.fx.tap === `${student.id}:${p.key}` ? ' tapped' : ''}`, 'aria-pressed': place === p.key ? 'true' : 'false', 'data-rk': `${student.id}:${p.key}`,
             onclick: () => tap(g, student.id, place === p.key ? null : p.key),
           }, p.label))),
         place ? h('button', { type: 'button', class: `round-reason${reason ? ' has' : ''}`, 'data-reason-for': student.id, onclick: () => askReason(student, place, reason) }, reason ? [h('span', { class: 'rr-label' }, 'Причина: '), reason] : '＋ Причина') : null));
@@ -135,14 +144,15 @@ export function render(ctx) {
     const wasDone = g.done;
     await mark([studentId], place);
     const now = roundView(ctx.state, ui.date).groups.find((x) => x.id === g.id);
-    if (now && now.done && !wasDone) ui.open.delete(g.id);
+    if (place) ui.fx.tap = `${studentId}:${place}`;
+    if (now && now.done && !wasDone) { ui.open.delete(g.id); ui.fx.done = g.id; }
     draw();
   }
 
   async function bulk(g, ids) {
     await mark(ids, 'sleeping');
     const now = roundView(ctx.state, ui.date).groups.find((x) => x.id === g.id);
-    if (now && now.done) ui.open.delete(g.id);
+    if (now && now.done) { ui.open.delete(g.id); ui.fx.done = g.id; }
     draw();
   }
 

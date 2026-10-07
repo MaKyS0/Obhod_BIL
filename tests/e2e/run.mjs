@@ -721,6 +721,49 @@ await scenario('Вечерний обход (телефон 375×812): отме�
   assert(navH >= 44, `пункт меню крупный (${navH})`);
 }, { viewport: { width: 375, height: 812 } });
 
+await scenario('Анимации и подпись разработчика: включаются вне автотестов, плавно играют, не ломают работу; подпись видна', async (page) => {
+  await open(page, '#/');
+  assert(!(await page.evaluate(() => document.documentElement.classList.contains('no-anim'))), 'анимации включены (window.__LYCEUM_ANIMATE__)');
+  // страница появляется по очереди
+  await page.waitForSelector('#view.page-enter');
+  const first = await page.$eval('#view.page-enter > *', (e) => getComputedStyle(e).animationName);
+  eq(first, 'rise', 'блоки страницы появляются анимацией rise');
+  // подпись разработчика на каждом экране
+  const foot = page.locator('footer.site-foot');
+  assert(await foot.isVisible(), 'подпись разработчика видна');
+  assert((await foot.textContent()).includes('разработчик MaKyS0'), 'имя разработчика');
+  eq(await foot.locator('a').first().getAttribute('href'), 'https://github.com/MaKyS0', 'ссылка на GitHub');
+  assert((await foot.locator('a').first().getAttribute('rel')).includes('noopener'), 'ссылка с noopener');
+  // числа на главной «набираются», но итог точный
+  await page.click('text=Загрузить DEMO-данные');
+  await page.waitForFunction(() => window.__lyceum.store.state.students.length > 0);
+  const total = await state(page, "S.students.filter(s => s.status === 'active').length");
+  await page.waitForFunction((n) => document.querySelector('.stat .value')?.textContent.trim() === String(n), total, { timeout: 4000 });
+  // навигация: новая страница снова анимируется, прокрутка вверх; обновление данных страницу не перезапускает
+  await go(page, '#/rounds');
+  await page.waitForSelector('section.round-class');
+  await page.click('button.round-head[data-class="2026-2027:7A"]');
+  eq(await page.$eval('section[data-class="2026-2027:7A"] .round-body', (e) => getComputedStyle(e).animationName), 'open-body', 'тело класса раскрывается анимацией');
+  const n = await page.locator('section[data-class="2026-2027:7A"] .round-row').count();
+  for (let i = 0; i < n; i++) {
+    await page.locator('section[data-class="2026-2027:7A"] .round-row').nth(i).locator('button.rp-sleeping').click();
+    await page.waitForTimeout(30);
+  }
+  await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="true"]');
+  eq(await page.$eval('section[data-class="2026-2027:7A"]', (e) => e.classList.contains('just-done')), true, 'готовый класс «выскакивает» один раз');
+  await page.click('button.round-head[data-class="2026-2027:7B"]');
+  eq(await page.$eval('section[data-class="2026-2027:7A"]', (e) => e.classList.contains('just-done')), false, 'эффект не повторяется при следующих перерисовках');
+  // всплывающее уведомление закрывается плавно и исчезает
+  await go(page, '#/settings');
+  await page.click('text=Удалить DEMO-данные');
+  await modal(page).locator('button:has-text("Удалить DEMO")').click();
+  await page.waitForSelector('.toast:has-text("DEMO-данные удалены")');
+  const closeBtn = page.locator('.toast:not(.out) button[aria-label="Закрыть"]');
+  while (await closeBtn.count()) await closeBtn.first().click();
+  await page.waitForSelector('.toast.out');
+  await page.waitForFunction(() => document.querySelectorAll('.toast').length === 0, null, { timeout: 2500 });
+}, { init: 'window.__LYCEUM_ANIMATE__ = true;' });
+
 await scenario('Экспорт JSON, очистка, восстановление из файла и из копии в браузере, CSV-экспорт', async (page) => {
   await loadDemo(page);
   const total = await state(page, 'S.students.length');

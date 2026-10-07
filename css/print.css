@@ -1,4 +1,4 @@
-.sidebar, .topbar, .banners, .toasts, .backdrop, .no-print, .toolbar, .tabs, .btn, .skip-link { display: none !important; }
+.site-foot, .sidebar, .topbar, .banners, .toasts, .backdrop, .no-print, .toolbar, .tabs, .btn, .skip-link { display: none !important; }
 body { background: #fff; font-size: 12px; }
 main { padding: 0; max-width: none; }
 .print-only { display: block !important; margin-bottom: 8px; }
