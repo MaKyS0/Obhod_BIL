@@ -1,5 +1,7 @@
 import { h } from '../ui/dom.js';
 import { pageHead, btn, demoBadge, badge } from '../ui/common.js';
+import { icon } from '../ui/icons.js';
+import { confirmAction } from '../ui/modal.js';
 import { dataTable } from '../ui/table.js';
 import { field } from '../ui/form.js';
 import { toast, toastError } from '../ui/toast.js';
@@ -24,7 +26,7 @@ export function render(ctx) {
   el.append(pageHead({
     title: 'Персонал',
     sub: `Классные руководители и воспитатели · учебный год ${yearLabel(yid)}`,
-    actions: [btn(role === 'teacher' ? 'Добавить классного руководителя' : 'Добавить воспитателя', () => openStaffForm(ctx, { role }), 'primary')],
+    actions: [btn(role === 'teacher' ? 'Добавить классного руководителя' : 'Добавить воспитателя', () => openStaffForm(ctx, { role }), 'primary', { icon: 'plus' })],
   }));
 
   const tabs = h('div', { class: 'tabs', role: 'tablist' }, ['teacher', 'tutor'].map((r) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(r === role), onclick: () => { memo.role = r; ctx.refresh(); } },
@@ -47,7 +49,7 @@ export function render(ctx) {
         toast(f.get() ? 'Назначено' : 'Назначение снято');
       } catch (e) { toastError(e); }
     });
-    grid.append(h('div', { style: 'font-weight:600' }, c.name), f.el);
+    grid.append(h('div', { class: 'an' }, c.name), f.el);
   }
   const assignCard = h('div', { class: 'card' }, h('h2', null, `Назначения: ${ROLE_LABEL[role].toLowerCase()}`), h('p', { class: 'muted' }, `Один ${ROLE_LABEL[role].toLowerCase()} на класс. Выбор в списке сохраняется сразу.`), grid);
 
@@ -63,23 +65,30 @@ export function render(ctx) {
       caption: ROLE_LABEL_PLURAL[role],
       rows,
       sortKey: 'name',
+      resetKey: `${role}|${memo.q}|${memo.archived}`,
+      selectable: { id: (r) => r.id, actions: [{ key: 'archive', label: 'В архив', icon: 'archive', kind: 'danger-outline', run: async (chosen, done) => {
+        const live = chosen.filter((x) => !x.archived);
+        if (!live.length) return toast('Выбранные сотрудники уже в архиве', 'error');
+        if (!(await confirmAction({ title: 'Отправить в архив', message: `Сотрудников: ${live.length}. С них будут сняты назначения на классы; запись можно вернуть из архива.`, confirmLabel: 'В архив' }))) return;
+        try { for (const x of live) await repo.archiveStaff(x.id); toast(`В архив: ${live.length}`); done(); } catch (e) { toastError(e); }
+      } }] },
       empty: 'Сотрудников не найдено',
       columns: [
         { key: 'name', label: 'ФИО', sortable: true, value: (r) => fullName(r), render: (r) => h('span', null, fullName(r), ' ', demoBadge(r), r.archived ? badge('Архив', 'warn') : null) },
         { key: 'contacts', label: 'Контакты', render: (r) => [r.phone, r.email].filter(Boolean).join(' · ') || '—' },
         { key: 'classes', label: 'Классы', render: (r) => {
           const mine = assigns.filter((a) => a.staffId === r.id).map((a) => idx.classes.get(a.classId)).filter(Boolean).sort((a, b) => a.grade - b.grade || cmp(a.letter, b.letter));
-          return mine.length ? h('div', { class: 'chips' }, mine.map((c) => h('span', { class: 'chip' }, h('a', { href: `#/class/${encodeURIComponent(c.id)}` }, c.name), h('button', { type: 'button', 'aria-label': `Снять назначение с класса ${c.name}`, title: 'Снять назначение', onclick: async () => { try { await repo.unassign(c.id, r.role); toast('Назначение снято'); } catch (e) { toastError(e); } } }, '×')))) : h('span', { class: 'muted' }, 'не назначен');
+          return mine.length ? h('div', { class: 'chips' }, mine.map((c) => h('span', { class: 'chip' }, h('a', { href: `#/class/${encodeURIComponent(c.id)}` }, c.name), h('button', { type: 'button', 'aria-label': `Снять назначение с класса ${c.name}`, title: 'Снять назначение', onclick: async () => { try { await repo.unassign(c.id, r.role); toast('Назначение снято'); } catch (e) { toastError(e); } } }, icon('x', 12))))) : h('span', { class: 'muted' }, 'не назначен');
         } },
         { key: 'act', label: 'Действия', actions: true, render: (r) => r.archived
           ? btn('Вернуть из архива', async () => { try { await repo.restoreStaff(r.id); toast('Сотрудник возвращён'); } catch (e) { toastError(e); } }, 'sm')
-          : h('span', null, btn('Назначить', () => openAssign(ctx, r), 'sm'), btn('Изменить', () => openStaffForm(ctx, { staff: r }), 'sm'), btn('Удалить', () => openDeleteStaff(ctx, r), 'danger-outline sm')) },
+          : h('span', null, btn('Назначить', () => openAssign(ctx, r), 'sm', { icon: 'user-plus' }), btn('Изменить', () => openStaffForm(ctx, { staff: r }), 'sm', { icon: 'edit' }), btn('Удалить', () => openDeleteStaff(ctx, r), 'danger-outline sm', { icon: 'trash' })) },
       ],
     }));
   }
   draw();
   el.append(h('div', { class: 'card flush' },
-    h('div', { class: 'card-head' }, h('h2', null, ROLE_LABEL_PLURAL[role]), h('div', { class: 'toolbar', style: 'margin:0' }, q, h('label', { class: 'check', style: 'margin:0' }, arch, h('span', null, 'Показать архивных')))),
+    h('div', { class: 'table-tools' }, h('div', { class: 'grow search-box' }, icon('search', 16), q), h('label', { class: 'check', style: 'margin:0' }, arch, h('span', null, 'Показать архивных'))),
     holder));
-  el.append(h('div', { style: 'margin-top:16px' }, assignCard));
+  el.append(h('div', { style: 'margin-top:26px' }, assignCard));
 }

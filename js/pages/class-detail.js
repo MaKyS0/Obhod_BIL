@@ -55,8 +55,8 @@ export function render(ctx) {
   };
   const notes = field({ label: 'Дополнительные данные', name: 'notes', type: 'textarea', value: cls.notes, hint: 'Например: профиль, кабинет, особенности класса' });
   el.append(h('div', { class: 'grid-2 no-print' },
-    h('div', { class: 'card' }, h('h2', null, 'Руководство класса'), staffSelect('teacher'), staffSelect('tutor'), s.staff.length ? null : h('p', { class: 'muted' }, 'Сначала добавьте сотрудников в разделе «Персонал».'), h('a', { href: '#/staff' }, 'Перейти в раздел «Персонал»')),
-    h('div', { class: 'card' }, h('h2', null, 'О классе'),
+    h('div', { class: 'card panel' }, h('h2', null, 'Руководство класса'), staffSelect('teacher'), staffSelect('tutor'), s.staff.length ? null : h('p', { class: 'muted' }, 'Сначала добавьте сотрудников в разделе «Персонал».'), h('a', { href: '#/staff' }, 'Перейти в раздел «Персонал»')),
+    h('div', { class: 'card panel' }, h('h2', null, 'О классе'),
       h('dl', { class: 'kv', style: 'margin-bottom:12px' }, h('dt', null, 'Учебный год'), h('dd', null, yearLabel(cls.yearId)), h('dt', null, 'Учеников'), h('dd', null, String(c.count))),
       notes.el,
       h('div', { class: 'row' }, btn('Сохранить', async () => { try { await repo.updateClassNotes(cls.id, notes.get()); toast('Сохранено'); } catch (e) { toastError(e); } }, 'sm'),

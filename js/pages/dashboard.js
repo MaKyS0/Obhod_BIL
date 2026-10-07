@@ -1,106 +1,154 @@
+// Главная: «что сейчас происходит в лицее» — что требует внимания, ключевые числа, вечерний обход, данные и посетители, последние изменения.
 import { h } from '../ui/dom.js';
-import { pageHead, btn, link, notice, classLink, personName, emptyState, yl } from '../ui/common.js';
-import { barChart } from '../ui/charts.js';
+import { pageHead, btn, link, emptyState, badge } from '../ui/common.js';
+import { icon } from '../ui/icons.js';
 import { toast, toastError } from '../ui/toast.js';
 import { confirmAction } from '../ui/modal.js';
 import { yearView, staffCounts } from '../domain/stats.js';
 import { nStudents, nClasses } from '../domain/plural.js';
-import { loadDemo } from '../services/demo.js';
 import { roundView } from '../domain/rounds.js';
-import { todayISO } from '../domain/dates.js';
+import { recentChanges } from '../domain/activity.js';
+import { todayISO, formatDateTime } from '../domain/dates.js';
+import { yearLabel as yl } from '../domain/years.js';
+import { describeSync } from '../services/sync.js';
+import { describeLive } from '../services/live.js';
+import { listRequests } from '../services/access.js';
+import { loadDemo } from '../services/demo.js';
 
 export const title = 'Главная';
 
+const stat = (value, label, sub, extra = '') => h('div', { class: `stat ${extra}`.trim() }, h('div', { class: 'value' }, String(value)), h('div', { class: 'label' }, label), sub ? h('div', { class: 'sub' }, sub) : null);
+const section = (title, body, action = null) => h('section', { class: 'dash-sec' }, h('div', { class: 'card-head' }, h('h2', null, title), action), body);
+
 export function render(ctx) {
-  const { state: s, repo, view: el } = ctx;
+  const { state: s, repo, view: el, access } = ctx;
   const yid = s.settings.currentYearId;
   const v = yearView(s, yid);
   const sc = staffCounts(s);
   const archived = s.students.filter((x) => x.status !== 'active').length;
-  const charts = [];
+  const round = roundView(s, todayISO());
+  let alive = true;
 
   el.append(pageHead({
     title: 'Главная',
     sub: `${s.settings.lyceumName} · учебный год ${yl(yid)}`,
-    actions: [link('Начать новый учебный год', '#/new-year', 'primary')],
+    actions: [link('Вечерний обход', '#/rounds', 'primary', { icon: 'moon' }), link('Начать новый учебный год', '#/new-year', '', { icon: 'calendar-next' })],
   }));
 
-  if (v.total > 0) {
-    const r = roundView(s, todayISO());
-    el.append(h('div', { class: 'card round-dash', style: 'margin-bottom:12px' },
-      h('h2', null, 'Вечерний обход'),
-      h('p', { class: 'muted' }, `Сегодня отмечено ${r.totals.marked} из ${r.totals.total} · готово классов: ${r.doneClasses} из ${r.groups.length}`),
-      link(r.totals.marked === r.totals.total ? 'Открыть обход' : 'Перейти к обходу', '#/rounds', 'primary')));
-  }
-
-  const alerts = [];
-  if (repo.hasDemo()) {
-    alerts.push(h('div', { class: 'banner warn' }, h('div', null, h('strong', null, 'В базе есть демонстрационные данные (DEMO). '), 'Они нужны только для проверки работы сайта.'), btn('Удалить DEMO-данные', async () => {
-      if (!(await confirmAction({ title: 'Удалить DEMO-данные', message: 'Будут удалены все ученики и сотрудники с пометкой DEMO. Ваши собственные данные не пострадают. Перед удалением будет создана резервная копия.', confirmLabel: 'Удалить DEMO' }))) return;
-      try { await repo.deleteDemo(); toast('DEMO-данные удалены'); } catch (e) { toastError(e); }
-    }, 'sm')));
-  }
-  if (v.pending.length) {
-    alerts.push(h('div', { class: 'banner warn' }, h('div', null, `${nStudents(v.pending.length)} ожидают оформления выпуска.`), btn('Оформить выпуск', async () => {
-      if (!(await confirmAction({ title: 'Оформить выпуск', message: `${nStudents(v.pending.length)} будут перемещены в архив как выпускники.`, confirmLabel: 'Оформить выпуск', kind: 'primary' }))) return;
-      try { toast(`Выпуск оформлен: ${await repo.finalizeGraduation()}`); } catch (e) { toastError(e); }
-    }, 'sm')));
-  }
-  if (v.unassigned.length) alerts.push(h('div', { class: 'banner info' }, h('div', null, `${nStudents(v.unassigned.length)} без класса.`), link('Показать', '#/students?status=noclass', 'sm')));
-  if (v.total > 0 && (v.classesWithoutTeacher.length || v.classesWithoutTutor.length)) {
-    alerts.push(h('div', { class: 'banner info' }, h('div', null, `Без классного руководителя: ${v.classesWithoutTeacher.length}, без воспитателя: ${v.classesWithoutTutor.length} из ${nClasses(v.classCount)}.`), link('Назначить', '#/staff', 'sm')));
-  }
-  alerts.forEach((a) => el.append(a));
-
   if (!v.total && !v.unassigned.length) {
-    el.append(h('div', { class: 'card', style: 'margin-top:16px' }, emptyState('База учеников пуста', 'Импортируйте список из CSV или JSON, добавьте учеников вручную или загрузите демонстрационные данные, чтобы посмотреть, как всё работает.', [
+    el.append(h('div', { class: 'panel', style: 'margin-bottom:18px' }, emptyState('База учеников пуста', 'Импортируйте список из CSV или JSON, добавьте учеников вручную или загрузите демонстрационные данные, чтобы посмотреть, как всё работает.', [
       link('Загрузить данные лицея (зашифрованные)', '#/import?source=repo', 'primary'),
       link('Импортировать из файла', '#/import'),
       link('Добавить в классе', '#/classes'),
       btn('Загрузить DEMO-данные', async () => { try { const r = await loadDemo(repo); toast(`Загружено DEMO: ${nStudents(r.students)}, сотрудников: ${r.staff}`); } catch (e) { toastError(e); } }),
-    ])));
+    ], 'users')));
   }
 
-  el.append(h('div', { class: 'stats', style: 'margin-top:16px' },
-    stat(v.total, 'Учеников', yl(yid)),
-    stat(v.classCount, 'Классов', `${v.grades.length} параллелей`),
-    stat(sc.teachers, 'Классных руководителей', `назначено на классы: ${v.teachersAssigned}`),
-    stat(sc.tutors, 'Воспитателей', `назначено на классы: ${v.tutorsAssigned}`),
+  // ---- Требует внимания ----
+  const items = [];
+  const attn = (kind, text, action) => items.push(h('li', { class: kind }, icon(kind === 'info' ? 'info' : 'alert', 16), h('span', { class: 'grow' }, text), action));
+  if (repo.hasDemo()) {
+    attn('warn', 'В базе есть демонстрационные данные (DEMO) — они нужны только для проверки работы сайта.', btn('Удалить DEMO-данные', async () => {
+      if (!(await confirmAction({ title: 'Удалить DEMO-данные', message: 'Будут удалены все ученики и сотрудники с пометкой DEMO. Ваши собственные данные не пострадают. Перед удалением будет создана резервная копия.', confirmLabel: 'Удалить DEMO' }))) return;
+      try { await repo.deleteDemo(); toast('DEMO-данные удалены'); } catch (e) { toastError(e); }
+    }, 'sm'));
+  }
+  if (v.pending.length) {
+    attn('warn', `${nStudents(v.pending.length)} ожидают оформления выпуска.`, btn('Оформить выпуск', async () => {
+      if (!(await confirmAction({ title: 'Оформить выпуск', message: `${nStudents(v.pending.length)} будут перемещены в архив как выпускники.`, confirmLabel: 'Оформить выпуск', kind: 'primary' }))) return;
+      try { toast(`Выпуск оформлен: ${await repo.finalizeGraduation()}`); } catch (e) { toastError(e); }
+    }, 'sm'));
+  }
+  if (v.unassigned.length) attn('info', `${nStudents(v.unassigned.length)} без класса.`, link('Показать', '#/students?status=noclass', 'sm'));
+  if (v.total > 0 && (v.classesWithoutTeacher.length || v.classesWithoutTutor.length)) {
+    attn('info', `Без классного руководителя: ${v.classesWithoutTeacher.length}, без воспитателя: ${v.classesWithoutTutor.length} из ${nClasses(v.classCount)}.`, link('Назначить', '#/staff', 'sm'));
+  }
+  if (v.total > 0 && round.totals.marked < round.totals.total && new Date().getHours() >= 19) {
+    attn('info', `Вечерний обход не завершён: не отмечено ${round.totals.total - round.totals.marked} из ${round.totals.total}.`, link('Продолжить', '#/rounds', 'sm'));
+  }
+  const live = ctx.live;
+  const sync = live ? describeLive(live.status) : describeSync(s.settings);
+  if (sync.kind === 'error') attn('danger', sync.text, link('Настройки', '#/settings', 'sm'));
+  const attnHolder = h('div');
+  const paintAttention = (extra = []) => {
+    const all = [...extra, ...items];
+    attnHolder.replaceChildren(all.length
+      ? h('ul', { class: 'attention', 'aria-label': 'Требует внимания' }, all)
+      : v.total ? h('div', { class: 'attention-ok' }, icon('check', 16), 'Замечаний нет: данные в порядке, обход и назначения заполнены.') : null);
+  };
+  paintAttention();
+  el.append(attnHolder);
+
+  // ---- Ключевые числа ----
+  const noTeacher = v.classesWithoutTeacher.length;
+  el.append(h('div', { class: 'kpis' },
+    stat(v.total, 'Учеников', `${nClasses(v.classCount)}, ${v.grades.length} параллелей`),
+    stat(`${v.teachersAssigned}/${v.classCount}`, 'Классные руководители', `всего ${sc.teachers}`, noTeacher ? 'is-warn' : ''),
+    stat(`${v.tutorsAssigned}/${v.classCount}`, 'Воспитатели', `всего ${sc.tutors}`, v.classesWithoutTutor.length ? 'is-warn' : ''),
+    stat(round.totals.total ? `${round.totals.marked}/${round.totals.total}` : '—', 'Обход сегодня', round.totals.total ? `классов готово: ${round.doneClasses} из ${round.groups.length}` : 'нет учеников'),
     stat(archived, 'В архиве', 'выпускники и выбывшие'),
   ));
 
+  // ---- Левая колонка: обход и параллели ----
+  const t = round.totals;
+  const pct = t.total ? Math.round((t.marked / t.total) * 100) : 0;
+  const roundBox = h('div', { class: 'round-meter' },
+    h('div', { class: 'round-progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': t.total, 'aria-valuenow': t.marked, 'aria-label': 'Отмечено на вечернем обходе' }, h('i', { style: `width:${pct}%` })),
+    h('div', { class: 'meter-row' },
+      h('span', null, 'Ночует: ', h('b', null, String(t.byPlace.sleeping))),
+      h('span', null, 'Болеет: ', h('b', null, String(t.byPlace.sick))),
+      h('span', null, 'С дома: ', h('b', null, String(t.byPlace.home))),
+      h('span', null, 'Не отмечено: ', h('b', null, String(t.total - t.marked)))));
   const max = Math.max(1, ...v.grades.map((g) => g.count));
-  el.append(h('div', { class: 'card' }, h('h2', null, 'Параллели'),
-    v.grades.map((g) => h('div', { class: 'grade-line' },
-      h('div', { class: 'name' }, `${g.grade} классы`),
-      h('div', { class: 'bar', role: 'presentation' }, h('span', { style: `width:${(g.count / max) * 100}%` })),
-      h('div', { class: 'meta' }, `${nClasses(g.classCount)} · ${nStudents(g.count)}`),
-    )),
-  ));
+  const grades = h('table', { class: 'mini-table' },
+    h('thead', null, h('tr', null, h('th', null, 'Параллель'), h('th', { class: 'num' }, 'Классов'), h('th', { class: 'num' }, 'Учеников'), h('th', { class: 'bar-cell', 'aria-hidden': 'true' }, ''))),
+    h('tbody', null, v.grades.map((g) => h('tr', null,
+      h('td', null, h('strong', null, `${g.grade} классы`)),
+      h('td', { class: 'num' }, String(g.classCount)),
+      h('td', { class: 'num' }, String(g.count)),
+      h('td', { class: 'bar-cell' }, h('div', { class: 'bar', role: 'presentation' }, h('span', { style: `width:${(g.count / max) * 100}%` })))))));
 
-  const byGrade = barChart({ labels: v.grades.map((g) => `${g.grade} классы`), data: v.grades.map((g) => g.count), title: 'Учеников по параллелям' });
-  const byClass = barChart({ labels: v.classes.map((c) => c.name), data: v.classes.map((c) => c.count), title: 'Учеников по классам', horizontal: true, tall: true });
-  charts.push(byGrade, byClass);
-  el.append(h('div', { class: 'grid-2', style: 'margin-top:16px' },
-    h('div', { class: 'card' }, h('h2', null, 'Учеников по параллелям'), byGrade.el),
-    h('div', { class: 'card' }, h('h2', null, 'Учеников по классам'), byClass.el),
-  ));
+  // ---- Правая колонка: данные, посетители, изменения ----
+  const lastBackup = s.settings.lastExportAt || s.settings.lastBackupAt;
+  const facts = h('dl', { class: 'facts' },
+    h('dt', null, 'Синхронизация'), h('dd', null, badge(sync.text.replace(/^Общая база: /, ''), sync.kind === 'ok' ? 'ok' : sync.kind === 'error' ? 'danger' : sync.kind === 'warn' ? 'warn' : '')),
+    h('dt', null, 'Обновлено'), h('dd', null, live && live.status.lastOkAt ? formatDateTime(new Date(live.status.lastOkAt).toISOString()) : s.settings.lastSyncAt ? formatDateTime(s.settings.lastSyncAt) : '—'),
+    h('dt', null, 'Резервная копия'), h('dd', null, lastBackup ? formatDateTime(lastBackup) : 'не создавалась'),
+    h('dt', null, 'Хранилище'), h('dd', null, ctx.store.db.kind === 'indexeddb' ? 'этот браузер + общая база' : 'только память'));
+  if (live && live.status.pending) facts.append(h('dt', null, 'Ждёт отправки'), h('dd', null, `${live.status.pending}`));
 
-  el.append(h('div', { class: 'card flush', style: 'margin-top:16px' },
-    h('div', { class: 'card-head' }, h('h2', null, 'Классы'), link('Все классы', '#/classes', 'sm')),
-    h('div', { class: 'table-wrap' }, h('table', { class: 'data responsive' },
-      h('thead', null, h('tr', null, h('th', null, 'Класс'), h('th', { class: 'num' }, 'Учеников'), h('th', null, 'Классный руководитель'), h('th', null, 'Воспитатель'))),
-      h('tbody', null, v.classes.map((c) => h('tr', null,
-        h('td', { 'data-label': 'Класс' }, classLink(c.cls)),
-        h('td', { class: 'num', 'data-label': 'Учеников' }, c.count),
-        h('td', { 'data-label': 'Классный руководитель' }, personName(c.teacher)),
-        h('td', { 'data-label': 'Воспитатель' }, personName(c.tutor)),
-      ))),
-    )),
-  ));
-  return () => charts.forEach((c) => c.destroy());
-}
+  const visitors = h('div', { class: 'loading' }, 'Загрузка…');
+  if (access.endpoint && access.owner) {
+    listRequests(access.endpoint, s.settings.sheetsToken).then(({ requests }) => {
+      if (!alive) return;
+      const by = (st) => requests.filter((r) => r.status === st);
+      const pending = by('pending');
+      access.pending = pending.length;
+      access.onPending?.(pending.length);
+      visitors.className = '';
+      visitors.replaceChildren(h('dl', { class: 'facts' },
+        h('dt', null, 'Ожидают решения'), h('dd', null, pending.length ? h('a', { href: '#/access' }, String(pending.length)) : '0'),
+        h('dt', null, 'Допущено'), h('dd', null, String(by('allowed').length)),
+        h('dt', null, 'Отклонено / отозвано'), h('dd', null, String(by('denied').length + by('revoked').length))));
+      if (pending.length) paintAttention([h('li', { class: 'info' }, icon('user-plus', 16), h('span', { class: 'grow' }, `Запросов на доступ: ${pending.length}`), link('Решить', '#/access', 'sm'))]);
+    }).catch(() => { if (alive) { visitors.className = 'muted'; visitors.textContent = 'Нет связи с сервером допуска'; } });
+  }
 
-function stat(value, label, sub) {
-  return h('div', { class: 'stat' }, h('div', { class: 'value' }, value), h('div', { class: 'label' }, label), sub ? h('div', { class: 'sub' }, sub) : null);
+  const changes = recentChanges(s, 7);
+  const activity = changes.length
+    ? h('ul', { class: 'activity' }, changes.map((c) => h('li', null,
+      h('span', { class: 'what' }, h('span', { class: 'kind' }, c.title), c.detail ? [': ', c.detail] : null),
+      h('span', { class: 'when' }, formatDateTime(c.at)))))
+    : h('p', { class: 'muted' }, 'Изменений пока нет.');
+
+  el.append(h('div', { class: 'dash' },
+    h('div', { class: 'dash-col' },
+      section('Вечерний обход · сегодня', roundBox, link('Открыть', '#/rounds', 'sm')),
+      section('Параллели', v.grades.length ? grades : h('p', { class: 'muted' }, 'Классов пока нет.'), link('Все классы', '#/classes', 'sm'))),
+    h('div', { class: 'dash-col' },
+      section('Данные', facts, link('Настройки', '#/settings?section=data', 'sm')),
+      access.endpoint && access.owner ? section('Посетители', visitors, link('Доступ', '#/access', 'sm')) : null,
+      section('Последние изменения', activity))));
+
+  return () => { alive = false; };
 }

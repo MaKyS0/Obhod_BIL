@@ -173,3 +173,18 @@ test('обход: причина к отметке — задать, замен�
   const sheet = buildSheetsPayload(env.S()).sheets['Вечерний обход'];
   assert.equal(sheet.rows.find((r) => r[3] === 'С дома')[4], 'Выходной');
 });
+
+test('главная: «последние изменения» собираются из меток времени и склеивают серии (импорт — одна строка)', async () => {
+  const { recentChanges } = await import('../../js/domain/activity.js');
+  const env = await makeEnv();
+  await seed(env, 2);
+  const changes = recentChanges(env.S(), 10);
+  assert.ok(changes.length >= 2 && changes.length <= 10);
+  assert.ok(changes.some((c) => /Добавлено учеников: 30/.test(c.title)), `серия добавлений склеена: ${changes.map((c) => c.title).join(' | ')}`);
+  assert.ok(changes.some((c) => /сотрудников/.test(c.title)));
+  assert.ok(changes.every((c, i) => i === 0 || changes[i - 1].at >= c.at), 'свежие сверху');
+  const sid = env.S().students[0].id;
+  await env.repo.setRound(sid, today, 'sick');
+  const after = recentChanges(env.S(), 10);
+  assert.ok(after.some((c) => /Вечерний обход/.test(c.title) && /отметок: 1/.test(c.detail)));
+});

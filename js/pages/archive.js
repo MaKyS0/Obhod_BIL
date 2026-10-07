@@ -1,5 +1,6 @@
 import { h } from '../ui/dom.js';
 import { pageHead, btn, badge, demoBadge } from '../ui/common.js';
+import { icon } from '../ui/icons.js';
 import { dataTable } from '../ui/table.js';
 import { field, classOptions } from '../ui/form.js';
 import { openModal, confirmAction } from '../ui/modal.js';
@@ -34,24 +35,24 @@ export function render(ctx) {
     const t = norm(memo.q).split(' ').filter(Boolean);
     const rows = rowsAll.filter((x) => !t.length || t.every((w) => norm(fullName(x)).includes(w)));
     holder.replaceChildren(dataTable({
-      caption: 'Архив учеников', rows, sortKey: 'name', empty: 'В архиве пока никого нет',
+      caption: 'Архив учеников', rows, sortKey: 'name', pageSize: 50, resetKey: `${memo.tab}|${memo.q}`, empty: 'В архиве пока никого нет',
       columns: [
         { key: 'name', label: 'ФИО', sortable: true, value: (r) => fullName(r), render: (r) => h('span', null, h('a', { href: '#', onclick: (e) => { e.preventDefault(); openStudentCard(ctx, r); } }, fullName(r)), ' ', demoBadge(r)) },
         { key: 'cls', label: 'Последний класс', render: (r) => lastClass(r) || '—' },
         { key: 'when', label: memo.tab === 'graduated' ? 'Год выпуска' : 'Выбыл', sortable: true, value: (r) => (memo.tab === 'graduated' ? r.graduatedYearId || '' : r.leftDate || ''), render: (r) => (memo.tab === 'graduated' ? yearLabel(r.graduatedYearId) : `${formatDate(r.leftDate)}${r.leftReason ? ` — ${r.leftReason}` : ''}`) },
         { key: 'st', label: 'Статус', render: (r) => badge(r.status === 'graduated' ? 'Выпускник' : 'Выбыл', r.status === 'graduated' ? 'info' : 'warn') },
         { key: 'act', label: 'Действия', actions: true, render: (r) => h('span', null,
-          btn('Вернуть в класс', () => openRestore(ctx, r), 'sm'),
+          btn('Вернуть в класс', () => openRestore(ctx, r), 'sm', { icon: 'undo' }),
           btn('Удалить навсегда', async () => {
             const ok = await confirmAction({ title: 'Удалить навсегда', message: `Запись «${fullName(r)}» и вся её история будут стёрты безвозвратно.`, details: ['Это действие нельзя отменить.', 'Перед удалением резервная копия не создаётся автоматически — скачайте её в «Настройках», если сомневаетесь.'], confirmLabel: 'Удалить навсегда', typeToConfirm: 'УДАЛИТЬ' });
             if (!ok) return;
             try { await repo.removeStudent(r.id, 'delete'); toast('Запись удалена'); } catch (e) { toastError(e); }
-          }, 'danger-outline sm')) },
+          }, 'danger-outline sm', { icon: 'trash' })) },
       ],
     }));
   }
   draw();
-  el.append(h('div', { class: 'card flush' }, h('div', { class: 'card-head' }, h('h2', null, memo.tab === 'graduated' ? 'Выпускники' : 'Выбывшие ученики'), h('div', { class: 'toolbar', style: 'margin:0' }, q)), holder));
+  el.append(h('div', { class: 'card flush' }, h('div', { class: 'table-tools' }, h('div', { class: 'grow search-box' }, icon('search', 16), q)), holder));
 }
 
 function openRestore(ctx, st) {

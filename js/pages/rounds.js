@@ -5,6 +5,7 @@ import { pageHead, btn, emptyState } from '../ui/common.js';
 import { toastError } from '../ui/toast.js';
 import { roundView, ROUND_PLACES, ROUND_LABEL, ROUND_REASONS, REASON_MAX, earliestRoundDate } from '../domain/rounds.js';
 import { openModal } from '../ui/modal.js';
+import { icon } from '../ui/icons.js';
 import { field } from '../ui/form.js';
 import { fullName } from '../domain/people.js';
 import { todayISO, formatDate } from '../domain/dates.js';
@@ -85,9 +86,9 @@ export function render(ctx) {
   function classSection(g) {
     const opened = ui.open.has(g.id);
     const head = h('button', { type: 'button', class: 'round-head', 'aria-expanded': opened ? 'true' : 'false', 'data-class': g.id, onclick: () => { if (ui.open.has(g.id)) ui.open.delete(g.id); else { ui.open.add(g.id); ui.fx.open = g.id; } draw(); } },
-      h('span', { class: 'round-class-name' }, g.name),
+      h('span', { class: 'round-class-name' }, g.name, g.done ? icon('check', 18) : null),
       h('span', { class: 'round-class-count' }, g.done ? `готово · ${nStudents(g.total)}` : `${g.marked} из ${g.total}`),
-      h('span', { class: 'round-chevron', 'aria-hidden': 'true' }, opened ? '▴' : '▾'));
+      h('span', { class: 'round-chevron', 'aria-hidden': 'true' }, icon(opened ? 'chevron-up' : 'chevron-down', 18)));
     const sec = h('section', { class: `round-class${ui.fx.done === g.id ? ' just-done' : ''}`, 'data-done': g.done ? 'true' : 'false', 'data-class': g.id }, head);
     if (!opened) return sec;
 
@@ -104,7 +105,7 @@ export function render(ctx) {
             type: 'button', class: `rp rp-${p.key}${ui.fx.tap === `${student.id}:${p.key}` ? ' tapped' : ''}`, 'aria-pressed': place === p.key ? 'true' : 'false', 'data-rk': `${student.id}:${p.key}`,
             onclick: () => tap(g, student.id, place === p.key ? null : p.key),
           }, p.label))),
-        place ? h('button', { type: 'button', class: `round-reason${reason ? ' has' : ''}`, 'data-reason-for': student.id, onclick: () => askReason(student, place, reason) }, reason ? [h('span', { class: 'rr-label' }, 'Причина: '), reason] : '＋ Причина') : null));
+        place ? h('button', { type: 'button', class: `round-reason${reason ? ' has' : ''}`, 'data-reason-for': student.id, onclick: () => askReason(student, place, reason) }, reason ? [h('span', { class: 'rr-label' }, 'Причина: '), reason] : [icon('plus', 14), 'Причина']) : null));
     }
     sec.append(body);
     return sec;

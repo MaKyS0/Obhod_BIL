@@ -1,85 +1,43 @@
-/* Анимации: мягкие, короткие, без мелькания. Отключаются при «уменьшить движение» и в автотестах (html.no-anim). */
+/* Анимации: короткие и сдержанные — только там, где они помогают понять, что произошло. Отключаются при «уменьшить движение» и в автотестах (html.no-anim). */
 :root { --ease: cubic-bezier(.22, .8, .24, 1); }
 
-/* ---- появление страницы: блоки поднимаются по очереди ---- */
-@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes pop { 0% { transform: scale(.94); } 55% { transform: scale(1.025); } 100% { transform: scale(1); } }
-@keyframes sheet-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
-@keyframes dialog-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
-@keyframes toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
-@keyframes toast-out { to { opacity: 0; transform: translateX(24px); } }
-@keyframes pulse-dot { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.15); } }
-@keyframes check-in { 0% { opacity: 0; transform: scale(0) rotate(-25deg); } 70% { transform: scale(1.25) rotate(4deg); } 100% { opacity: 1; transform: none; } }
-@keyframes glow-green { 0% { box-shadow: 0 0 0 0 rgba(63,155,69,.55); } 100% { box-shadow: 0 0 0 16px rgba(63,155,69,0); } }
-@keyframes tap-pop { 0% { transform: scale(.9); } 60% { transform: scale(1.05); } 100% { transform: scale(1); } }
-@keyframes shine { from { transform: translateX(-120%) skewX(-20deg); } to { transform: translateX(260%) skewX(-20deg); } }
-@keyframes open-body { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes pop { 0% { transform: scale(.985); } 60% { transform: scale(1.008); } 100% { transform: scale(1); } }
+@keyframes sheet-up { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(6px); } }
+@keyframes pulse-dot { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes glow-green { 0% { box-shadow: 0 0 0 0 rgba(63,155,69,.45); } 100% { box-shadow: 0 0 0 10px rgba(63,155,69,0); } }
+@keyframes tap-pop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } 100% { transform: scale(1); } }
+@keyframes open-body { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
-#view.page-enter > * { animation: rise .42s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 45ms); }
-.gate-card { animation: rise .5s var(--ease) backwards; }
+/* Страница появляется блоками, по очереди (первые 12 блоков) */
+#view.page-enter > * { animation: rise .28s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 30ms); }
+.gate-card { animation: rise .35s var(--ease) backwards; }
+.backdrop:not([hidden]) { animation: fade .2s ease-out; }
+dialog.modal[open] { animation: dialog-in .18s var(--ease); }
+dialog.modal[open]::backdrop { animation: fade .18s ease-out; }
+@media (max-width: 639px) { dialog.modal[open] { animation: sheet-up .24s var(--ease); } }
+.toast { animation: toast-in .22s var(--ease); }
+.toast.out { animation: toast-out .18s ease-in forwards; }
 
-/* ---- кнопки и карточки ---- */
-.btn { transition: transform .14s var(--ease), box-shadow .14s var(--ease), background-color .15s, border-color .15s, color .15s; }
-.btn:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(23,40,58,.14); }
-.btn:active { transform: translateY(0) scale(.97); box-shadow: none; }
-.class-card, .stat, .card { transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s; }
-.class-card:hover { transform: translateY(-3px); box-shadow: 0 8px 18px rgba(23,40,58,.12); }
-.stat:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(23,40,58,.1); }
-table.data tbody tr { transition: background-color .15s; }
-
-/* ---- меню ---- */
-#nav a { transition: background-color .15s, color .15s, padding-left .18s var(--ease), border-color .18s; }
-#nav a:hover { padding-left: 16px; }
-.brand-mark { position: relative; overflow: hidden; transition: transform .25s var(--ease); }
-.brand:hover .brand-mark { transform: rotate(-6deg) scale(1.06); }
-.brand-mark::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: shine 4.5s ease-in-out 1.2s infinite; }
-.sidebar { transition: transform .25s var(--ease), visibility .25s; }
-.backdrop:not([hidden]) { animation: fade .25s ease-out; }
-
-/* ---- окна и уведомления ---- */
-dialog.modal[open] { animation: dialog-in .22s var(--ease); }
-dialog.modal[open]::backdrop { animation: fade .22s ease-out; }
-@media (max-width: 639px) { dialog.modal[open] { animation: sheet-up .28s var(--ease); } }
-.toast { animation: toast-in .3s var(--ease); }
-.toast.out { animation: toast-out .22s ease-in forwards; }
-
-/* ---- статус синхронизации: пульсирующая точка, пока что-то ждёт отправки ---- */
-.sync-status::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: currentColor; vertical-align: middle; }
-.sync-status[data-kind="warn"]::before { animation: pulse-dot 1.1s ease-in-out infinite; }
-.sync-status[data-kind="error"]::before { background: var(--danger); }
-.sync-status[data-kind="off"]::before { opacity: .4; }
-
-/* ---- загрузка ---- */
-.loading { animation: fade .6s ease-out; }
+/* Индикаторы */
+.sync-status[data-kind="warn"] .dot { animation: pulse-dot 1.1s ease-in-out infinite; }
+.loading { animation: fade .5s ease-out; }
 .loading::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 8px; border-radius: 50%; background: currentColor; animation: pulse-dot 1s ease-in-out infinite; vertical-align: middle; }
 
-/* ---- вечерний обход ---- */
-.round-class { transition: background-color .45s var(--ease), border-color .45s var(--ease), box-shadow .3s; }
-.round-class[data-done="true"] .round-class-name::after { content: " ✓"; display: inline-block; color: #2e8a35; }
-.round-class.just-done { animation: pop .5s var(--ease), glow-green .9s ease-out; }
-.round-class.just-done .round-class-name::after { animation: check-in .55s var(--ease) .1s backwards; }
-.round-body.opening { animation: open-body .22s var(--ease); }
-.round-progress > i { transition: width .5s var(--ease), background-color .3s; }
-.round-chevron { transition: transform .2s; }
-.rp { transition: background-color .15s, border-color .15s, color .15s, transform .12s; }
-.rp.tapped { animation: tap-pop .3s var(--ease); }
-.round-reason { transition: background-color .15s, border-color .15s; }
-.reason-chip { transition: background-color .15s, color .15s, transform .12s; }
-.reason-chip:active { transform: scale(.95); }
-.rc { transition: background-color .3s; }
-.rc b { display: inline-block; }
-.rc b.bump { animation: tap-pop .35s var(--ease); }
+/* Вечерний обход */
+.round-class { transition: background-color .35s var(--ease), border-color .35s var(--ease); }
+.round-class.just-done { animation: pop .4s var(--ease), glow-green .8s ease-out; }
+.round-body.opening { animation: open-body .18s var(--ease); }
+.round-progress > i { transition: width .45s var(--ease); }
+.rp { transition: background-color .12s, border-color .12s, color .12s, transform .1s; }
+.rp.tapped { animation: tap-pop .25s var(--ease); }
+.rc b.bump { display: inline-block; animation: tap-pop .3s var(--ease); }
 
-/* ---- подпись разработчика ---- */
-.site-foot { padding: 18px 24px 28px; color: var(--muted); font-size: 13px; text-align: center; animation: fade .8s ease-out .3s backwards; }
-.site-foot a { color: inherit; font-weight: 600; text-decoration: none; border-bottom: 1px dotted currentColor; transition: color .15s, border-color .15s; }
-.site-foot a:hover { color: var(--primary); }
-.site-foot .heart { display: inline-block; color: #c0392b; animation: pulse-dot 1.8s ease-in-out infinite; }
-body.gated .site-foot { margin-top: 24px; }
-@media (max-width: 639px) { .site-foot { padding: 14px 12px 24px; } }
-
-/* ---- без анимации: для людей с «уменьшить движение» и автотестов ---- */
+/* Без анимации: «уменьшить движение» и автотесты */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

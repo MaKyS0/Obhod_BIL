@@ -1,6 +1,7 @@
 // Модальные окна на нативном <dialog>: фокус, Esc и затемнение обеспечивает браузер.
 import { h } from './dom.js';
 import { toastError } from './toast.js';
+import { icon } from './icons.js';
 
 let seq = 0;
 
@@ -56,7 +57,7 @@ export function openModal({ title, body, actions = [], wide = false, danger = fa
       e.preventDefault();
       if (submitIdx >= 0) runAction(actions[submitIdx]);
     } },
-    h('div', { class: 'modal-head' }, h('h2', { id: `${id}-t` }, title), h('button', { type: 'button', class: 'modal-close', 'aria-label': 'Закрыть окно', onclick: () => ctx.close(null) }, '×')),
+    h('div', { class: 'modal-head' }, h('h2', { id: `${id}-t` }, title), h('button', { type: 'button', class: 'modal-close', 'aria-label': 'Закрыть окно', onclick: () => ctx.close(null) }, icon('x', 16))),
     h('div', { class: 'modal-body' }, body),
     h(
       'div',

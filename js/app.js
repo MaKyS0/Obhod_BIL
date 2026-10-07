@@ -28,6 +28,7 @@ import { runGate, watchAccess } from './ui/gate.js';
 import { listRequests } from './services/access.js';
 import { enterPage, countUp } from './ui/anim.js';
 import { THEMES, getPref, cyclePref, onThemeChange } from './ui/theme.js';
+import { icon } from './ui/icons.js';
 
 // Автотесты (WebDriver) работают без анимации: так проверки не зависят от движения элементов. Включить — window.__LYCEUM_ANIMATE__ = true.
 if (navigator.webdriver && window.__LYCEUM_ANIMATE__ !== true) document.documentElement.classList.add('no-anim');
@@ -49,6 +50,19 @@ const ROUTES = [
   ['search', '/search', search],
   ['access', '/access', accessPage],
 ].map(([name, path, mod]) => ({ name, path, render: mod.render, title: mod.title }));
+
+// Меню: рабочие разделы, учебный год, система. owner — пункт виден только владельцу.
+const NAV = [
+  { items: [['dashboard', '/', 'Главная', 'home'], ['rounds', '/rounds', 'Вечерний обход', 'moon'], ['classes', '/classes', 'Классы', 'layers'], ['students', '/students', 'Ученики', 'users'], ['staff', '/staff', 'Персонал', 'badge']] },
+  { label: 'Учебный год', items: [['new-year', '/new-year', 'Новый учебный год', 'calendar-next'], ['history', '/history', 'История', 'history'], ['reports', '/reports', 'Отчёты', 'chart'], ['archive', '/archive', 'Архив', 'archive']] },
+  { label: 'Система', items: [['import', '/import', 'Импорт и экспорт', 'swap'], ['access', '/access', 'Доступ', 'shield', true], ['settings', '/settings', 'Настройки', 'sliders']] },
+];
+
+function buildNav(nav) {
+  nav.replaceChildren(...NAV.map((g) => h('div', { class: 'nav-group', role: 'group', 'aria-label': g.label || 'Основные разделы' },
+    g.label ? h('div', { class: 'nav-group-label', 'aria-hidden': 'true' }, g.label) : null,
+    g.items.map(([route, path, label, ic, owner]) => h('a', { href: `#${path}`, 'data-route': route, title: label, class: owner ? 'owner-only' : null }, icon(ic, 18), h('span', { class: 'nav-label' }, label), route === 'access' ? h('span', { class: 'nav-count', 'aria-label': 'Новых запросов' }) : null)))));
+}
 
 const DAY = 24 * 3600 * 1000;
 
@@ -92,14 +106,18 @@ async function main() {
 
   if (access.owner) document.body.dataset.owner = '1'; // без допуска (локальный режим) пользователь — сам себе владелец
 
+  buildNav($('#nav'));
+  $('#menuBtn').appendChild(icon('menu', 18));
+  $('#searchForm').prepend(icon('search', 16));
+
   const router = createRouter({
     view,
     routes: ROUTES,
-    makeContext: ({ view: v, params, query, route }) => ({ view: v, params, query, route, store, repo, router, access, get state() { return store.state; }, refresh: () => router.refresh() }),
+    makeContext: ({ view: v, params, query, route }) => ({ view: v, params, query, route, store, repo, router, access, get live() { return live; }, get state() { return store.state; }, refresh: () => router.refresh() }),
     onChange: (route) => {
       $$('#nav a').forEach((a) => (a.dataset.route === route.name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
       const r = ROUTES.find((x) => x.name === route.name);
-      document.title = `${(r && r.title) || 'Учёт лицея'} — ${store.state.settings.lyceumName}`;
+      document.title = `${(r && r.title) || 'Костанай БИЛ'} — Костанай БИЛ`;
       closeNav();
       if (!route.refreshed) { enterPage(view); countUp(view); }
       if (!route.refreshed) window.scrollTo(0, 0); // при обновлении той же страницы (чужая правка, своя отметка) прокрутка остаётся на месте
@@ -144,7 +162,7 @@ async function main() {
   const themeBtn = $('#themeBtn');
   const paintTheme = () => {
     const t = THEMES.find((x) => x.key === getPref());
-    themeBtn.textContent = t.icon;
+    themeBtn.replaceChildren(icon(t.icon, 16));
     themeBtn.title = `Тема: ${t.label}. Нажмите, чтобы сменить`;
     themeBtn.setAttribute('aria-label', `Тема оформления: ${t.label}. Нажмите, чтобы сменить`);
   };
@@ -168,11 +186,12 @@ async function main() {
 
   function updateChrome() {
     const s = store.state.settings;
-    $('#brandName').textContent = s.lyceumName;
-    $('#yearBadge').replaceChildren('Учебный год ', h('strong', null, yearLabel(s.currentYearId)));
+    $('#brandSub').textContent = s.lyceumName || 'Информационная система';
+    $('#yearBadge').replaceChildren(icon('calendar', 15), h('span', { class: 'yb-label' }, 'Учебный год'), h('strong', null, yearLabel(s.currentYearId)));
     const d = live ? describeLive(live.status) : describeSync(s);
     syncBtn.dataset.kind = d.kind;
-    syncBtn.textContent = live ? d.text : d.kind === 'off' ? 'Google: не подключено' : d.kind === 'ok' ? 'Google: синхронизировано' : d.kind === 'error' ? 'Google: ошибка' : 'Google: ждёт отправки';
+    const syncText = live ? d.text.replace(/^Общая база: /, 'База: ') : d.kind === 'off' ? 'Google не подключён' : d.kind === 'ok' ? 'Google: синхронизировано' : d.kind === 'error' ? 'Google: ошибка' : 'Google: ждёт отправки';
+    syncBtn.replaceChildren(h('span', { class: 'dot' }), h('span', null, syncText));
     syncBtn.title = live ? `${d.text}${live.status.lastOkAt ? `. Последнее обновление: ${new Date(live.status.lastOkAt).toLocaleTimeString('ru-RU')}` : ''}` : d.text;
     $('#storageNote').textContent = db.kind === 'indexeddb' ? 'Данные хранятся в этом браузере' : 'Хранение отключено!';
 
@@ -210,7 +229,7 @@ async function main() {
   // Владельцу: число ожидающих запросов рядом с пунктом «Доступ».
   if (endpoint && access.owner) {
     const link = $('#nav a[data-route=access]');
-    const paint = (n) => { link.textContent = n ? `Доступ (${n})` : 'Доступ'; };
+    const paint = (n) => { const c = link.querySelector('.nav-count'); c.textContent = n ? String(n) : ''; link.title = n ? `Доступ: новых запросов — ${n}` : 'Доступ'; };
     access.onPending = paint;
     const refresh = async () => {
       try { const { requests } = await listRequests(endpoint, store.state.settings.sheetsToken); access.pending = requests.filter((r) => r.status === 'pending').length; paint(access.pending); } catch { /* нет связи */ }

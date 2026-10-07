@@ -1,8 +1,8 @@
 // Переключение темы: «Как в системе» / «Светлая» / «Тёмная». Применение до отрисовки — js/theme-init.js.
 export const THEMES = [
-  { key: 'auto', label: 'Как в системе', icon: '◐' },
-  { key: 'light', label: 'Светлая', icon: '☀' },
-  { key: 'dark', label: 'Тёмная', icon: '☾' },
+  { key: 'auto', label: 'Как в системе', icon: 'monitor' },
+  { key: 'light', label: 'Светлая', icon: 'sun' },
+  { key: 'dark', label: 'Тёмная', icon: 'moon' },
 ];
 const KEY = 'lyceum-theme';
 const root = document.documentElement;

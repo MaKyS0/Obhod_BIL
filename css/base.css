@@ -1,48 +1,75 @@
-/* Токены и базовая типографика. Без веб-шрифтов: системные гарнитуры. */
+/* Дизайн-система «Костанай БИЛ»: токены и типографика.
+   Принципы: нейтральная серо-синяя основа, цвет — только для действий, статусов и активного состояния.
+   Шрифт системный (без загрузки с сторонних серверов). Шкала: 20 / 15 / 13 / 14(текст) / 13(второстепенный) / 12(метки). */
 :root {
-  --bg: #f4f5f7;
-  --surface: #fff;
-  --surface-2: #f9fafb;
-  --border: #d7dbe0;
-  --border-strong: #b9c0c9;
-  --text: #1c2330;
-  --muted: #5a6473;
-  --primary: #1f4e79;
-  --primary-hover: #173d60;
-  --primary-weak: #e8eff6;
-  --success: #2e6b30;
-  --success-weak: #e9f3ea;
-  --warning: #8a5300;
-  --warning-weak: #fff3dc;
-  --danger: #a8261d;
-  --danger-hover: #861c15;
-  --danger-weak: #fbeaea;
-  --focus: #2b6cb0;
+  --bg: #f2f3f5;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --surface-3: #eceff3;
+  --border: #dfe2e7;
+  --border-strong: #c5cbd4;
+  --text: #18202b;
+  --text-2: #434d5b;
+  --muted: #667283;
+
+  --primary: #1f4e8c;
+  --primary-hover: #173f73;
+  --primary-weak: #e7eef7;
+  --primary-line: #bfd1e6;
+  --ring: rgba(31, 78, 140, .30);
+  --focus: #1f4e8c;
+
+  --success: #24692e;
+  --success-weak: #e5f1e7;
+  --success-line: #b3d4b8;
+  --warning: #85530a;
+  --warning-weak: #fcf0d6;
+  --warning-line: #e6cc90;
+  --danger: #b0261c;
+  --danger-hover: #8e1d15;
+  --danger-weak: #fae8e6;
+  --danger-line: #e5b3ae;
+
+  --side-bg: #eceef2;
+  --side-border: #dcdfe5;
+  --side-text: #394353;
+  --side-muted: #758195;
+  --side-hover: #e0e4ea;
+  --side-active: #ffffff;
+
   --radius: 4px;
+  --radius-lg: 6px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --sidebar-w: 224px;
-  --row-h: 40px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sidebar-w: 228px;
+  --rail-w: 56px;
+  --topbar-h: 48px;
+  --shadow-pop: 0 10px 30px rgba(15, 25, 38, .22);
+
+  --chart-grid: #e3e6eb;
+  --chart-text: #667283;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  font: 15px/1.5 var(--font);
+  font: 14px/1.45 var(--font);
   color: var(--text);
   background: var(--bg);
   font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3, h4 { margin: 0; line-height: 1.25; font-weight: 600; }
-h1 { font-size: 22px; }
-h2 { font-size: 18px; }
-h3 { font-size: 15px; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.3; font-weight: 600; }
+h1 { font-size: 20px; letter-spacing: -.01em; }
+h2 { font-size: 15px; }
+h3 { font-size: 13px; }
 p { margin: 0 0 8px; }
-a { color: var(--primary); }
+a { color: var(--primary); text-decoration-thickness: 1px; text-underline-offset: 2px; }
 a:hover { color: var(--primary-hover); }
 small, .muted { color: var(--muted); }
-small { font-size: 13px; }
-code, kbd { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--surface-2); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
+small { font-size: 12px; }
+code, kbd { font: 12px/1.4 var(--mono); background: var(--surface-3); border-radius: 3px; padding: 1px 5px; }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -51,8 +78,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 .num { text-align: right; }
 .nowrap { white-space: nowrap; }
-.loading { padding: 24px; color: var(--muted); }
+.loading { padding: 24px 0; color: var(--muted); }
+.ico { flex: none; vertical-align: -0.2em; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Метки и служебный текст */
+.label-sm { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.meta { font-size: 12px; color: var(--muted); }
 
 @media (max-width: 767px) {
-  body { font-size: 16px; }
+  body { font-size: 15px; }
 }

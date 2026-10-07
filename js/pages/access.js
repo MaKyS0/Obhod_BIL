@@ -23,7 +23,7 @@ export async function render(ctx) {
   }
   const token = ctx.state.settings.sheetsToken;
   const holder = h('div', { 'aria-live': 'polite' }, h('p', { class: 'loading' }, 'Загрузка…'));
-  el.append(h('div', { class: 'card flush' }, h('div', { class: 'card-head' }, h('h2', null, 'Запросы на доступ'), btn('Обновить', () => load(), 'sm', { id: 'accessRefresh' })), holder));
+  el.append(h('div', { class: 'card flush' }, h('div', { class: 'card-head' }, h('h2', null, 'Запросы на доступ'), btn('Обновить', () => load(), 'sm', { id: 'accessRefresh', icon: 'refresh' })), holder));
   el.append(notice('info', h('strong', null, 'Как это работает. '), 'Посетитель вводит имя и сообщение, вы получаете письмо и решаете здесь. Допущенный видит сайт; отозванный теряет вход, а сохранённые у него данные стираются при следующем открытии сайта. ',
     h('strong', null, 'Важно: '), 'допуск не заменяет шифрование. Файл с данными защищён паролем, который вы сообщаете людям сами; кому вы его сообщили и кто уже загрузил данные, уже имеет их копию.'));
 
@@ -52,7 +52,7 @@ export async function render(ctx) {
           { key: 'created', label: 'Запрос', render: (r) => formatDateTime(r.created) },
           { key: 'status', label: 'Статус', render: (r) => badge(STATUS[r.status]?.[0] || r.status, STATUS[r.status]?.[1] || '') },
           { key: 'act', label: 'Действия', actions: true, render: (r) => h('span', null,
-            r.status !== 'allowed' ? btn('Разрешить', () => decide(r, 'allow', 'Разрешить'), 'primary sm', { 'data-act': 'allow' }) : null,
+            r.status !== 'allowed' ? btn('Разрешить', () => decide(r, 'allow', 'Разрешить'), 'primary sm', { 'data-act': 'allow', icon: 'check' }) : null,
             r.status === 'pending' ? btn('Отклонить', () => decide(r, 'deny', 'Отклонить'), 'danger-outline sm', { 'data-act': 'deny' }) : null,
             r.status === 'allowed' ? btn('Отозвать', () => decide(r, 'revoke', 'Отозвать доступ'), 'danger-outline sm', { 'data-act': 'revoke' }) : null,
             btn('Удалить запись', () => decide(r, 'delete', 'Удалить запись'), 'ghost sm', { 'data-act': 'delete' })) },

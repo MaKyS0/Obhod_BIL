@@ -16,7 +16,7 @@ export function runGate({ endpoint, store, repo, db, view }) {
       document.body.classList.remove('gated');
       resolve({ role });
     };
-    const show = (...nodes) => view.replaceChildren(h('div', { class: 'gate' }, h('div', { class: 'card gate-card' }, nodes)));
+    const show = (...nodes) => view.replaceChildren(h('div', { class: 'gate' }, h('div', { class: 'card gate-card' }, h('div', { class: 'gate-brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, 'Б'), h('div', { class: 'brand-text' }, h('strong', null, 'Костанай БИЛ'), h('small', null, 'Информационная система лицея'))), nodes)));
 
     async function enterAsOwner(token) {
       const r = await verifyOwner(endpoint, token);

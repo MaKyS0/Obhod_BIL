@@ -86,12 +86,13 @@ await scenario('Первый запуск: 15 классов, пустая гл�
   const total = await state(page, "S.students.filter(s => s.status === 'active').length");
   eq((await page.textContent('.stat .value')).trim(), String(total), 'всего учеников на дашборде');
   assert(total > 300, 'демо загружено');
-  const sevenText = await page.textContent('.grade-line:nth-of-type(1)');
   const seven = await state(page, `S.enrollments.filter(e => e.classId && e.classId.includes(':7')).length`);
-  assert(sevenText.includes(`${seven} учеников`) || sevenText.includes(`${seven} ученик`), `7 классы: ${sevenText} / ${seven}`);
-  assert((await page.textContent('.banner.warn')).includes('DEMO'), 'плашка DEMO');
-  eq(await page.locator('table.data tbody tr').count(), 15, 'строк в таблице классов');
-  assert((await page.locator('canvas').count()) === 2, 'два графика Chart.js');
+  eq((await page.textContent('.mini-table tbody tr:first-child td:nth-child(3)')).trim(), String(seven), 'в строке «7 классы» числа учеников совпадают с базой');
+  eq(await page.locator('.mini-table tbody tr').count(), 5, 'пять параллелей в таблице на главной');
+  assert((await page.textContent('.attention')).includes('DEMO'), 'в блоке «Требует внимания» есть пометка DEMO');
+  eq(await page.locator('canvas').count(), 0, 'на главной нет декоративных графиков');
+  eq(await page.locator('.kpis .stat').count(), 5, 'пять ключевых показателей');
+  assert((await page.textContent('.dash')).includes('Вечерний обход'), 'на главной виден вечерний обход');
   await page.reload();
   await page.waitForSelector('.stat');
   eq(await state(page, 'S.students.length'), total, 'данные сохранились после перезагрузки');
@@ -460,7 +461,7 @@ await scenario('Допуск: запрос → письмо владельцу �
     await o.page.fill('input[name=ownerToken]', token);
     await o.page.click('#ownerLoginSubmit');
     await o.page.waitForSelector('#sidebar', { state: 'visible' });
-    await o.page.waitForFunction(() => document.querySelector('#nav a[data-route=access]')?.textContent.includes('(1)'));
+    await o.page.waitForFunction(() => document.querySelector('#nav a[data-route=access] .nav-count')?.textContent.trim() === '1');
     eq(await o.page.evaluate(() => window.__lyceum.store.state.settings.sheetsUrl), ENDPOINT, 'адрес скрипта проставлен владельцу автоматически');
     await o.page.waitForTimeout(4500); // автосинхронизация стартует через 3 с после открытия
     eq(sb.sheets.has('Ученики'), false, 'пустая база владельца не затёрла таблицу автосинхронизацией');
@@ -554,7 +555,7 @@ await scenario('Общая база: два устройства видят од
     await o.page.waitForFunction(() => window.__lyceum.store.state.students.length > 300);
     const total = await state(o.page, 'S.students.length');
     await o.page.waitForFunction(() => window.__lyceum.store.state.settings.liveRev > 0 && window.__lyceum.store.state.settings.liveOutbox.length === 0);
-    assert(/Общая база: актуально/.test(await o.page.textContent('#syncStatus')), 'в шапке «Общая база: актуально»');
+    assert(/База: актуально/.test(await o.page.textContent('#syncStatus')), 'в шапке «База: актуально»');
 
     // --- посетитель: запрос, допуск — и у него сразу те же данные, без импорта
     const v = await site();
@@ -627,7 +628,7 @@ await scenario('Вечерний обход (телефон 375×812): отме�
   eq(await page.locator('section.round-class[data-done="true"]').count(), 0, 'пока ни один класс не готов');
   const bg = (sel) => page.$eval(sel, (e) => getComputedStyle(e).backgroundColor);
   const grayBg = await bg('section.round-class[data-class="2026-2027:7A"]');
-  eq(grayBg, 'rgb(233, 236, 240)', 'незавершённый класс серый');
+  eq(grayBg, 'rgb(236, 239, 243)', 'незавершённый класс серый');
   assert((await page.textContent('.pagehead .sub')).includes('отмечено 0 из'), 'счётчик в заголовке');
 
   // раскрыть 7A, проверить удобство на телефоне
@@ -658,7 +659,7 @@ await scenario('Вечерний обход (телефон 375×812): отме�
     await row.locator(`button.rp-${places[i % 3]}`).click();
   }
   await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="true"]');
-  eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(217, 240, 219)', 'цвет зелёный');
+  eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(229, 241, 231)', 'цвет зелёный');
   await page.waitForSelector('button.round-head[data-class="2026-2027:7A"][aria-expanded="false"]');
   eq(await page.locator('section.round-class[data-done="true"]').count(), 1, 'готов ровно один класс');
   eq(await state(page, "S.rounds.filter(r => r.classId === '2026-2027:7A').length"), n, 'отметки записаны в базу');
@@ -669,7 +670,7 @@ await scenario('Вечерний обход (телефон 375×812): отме�
   const first = page.locator('section[data-class="2026-2027:7A"] .round-row').nth(0);
   const second = page.locator('section[data-class="2026-2027:7A"] .round-row').nth(1);
   eq(await second.locator('button.rp-sick').getAttribute('aria-pressed'), 'true', 'второй ученик отмечен «Болеет»');
-  eq(await first.locator('.round-reason').innerText(), '＋ Причина', 'у отмеченного есть кнопка «Причина»');
+  assert((await first.locator('.round-reason').innerText()).trim() === 'Причина', 'у отмеченного есть кнопка «Причина»');
   await second.locator('.round-reason').click();
   eq(await modal(page).count(), 1, 'окно причины');
   assert((await modal(page).locator('.reason-chip').count()) >= 4, 'готовые причины для «Болеет»');
@@ -689,7 +690,7 @@ await scenario('Вечерний обход (телефон 375×812): отме�
   // снять отметку — класс снова серый; повторное касание того же места снимает (класс 7A уже раскрыт)
   await page.locator('section[data-class="2026-2027:7A"] .round-row').first().locator('button[aria-pressed="true"]').click();
   await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="false"]');
-  eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(233, 236, 240)', 'серый');
+  eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(236, 239, 243)', 'серый');
   await page.locator('section[data-class="2026-2027:7A"] .round-row').first().locator('button.rp-sleeping').click();
   await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="true"]');
 
@@ -731,7 +732,7 @@ await scenario('Анимации и подпись разработчика: в�
   // подпись разработчика на каждом экране
   const foot = page.locator('footer.site-foot');
   assert(await foot.isVisible(), 'подпись разработчика видна');
-  assert((await foot.textContent()).includes('разработчик MaKyS0'), 'имя разработчика');
+  assert((await foot.textContent()).includes('Разработчик MaKyS0'), 'имя разработчика');
   eq(await foot.locator('a').first().getAttribute('href'), 'https://github.com/MaKyS0', 'ссылка на GitHub');
   assert((await foot.locator('a').first().getAttribute('rel')).includes('noopener'), 'ссылка с noopener');
   // числа на главной «набираются», но итог точный
@@ -769,13 +770,13 @@ await scenario('Тёмная тема: кнопка в шапке и выбор 
   const bg = (sel) => page.$eval(sel, (e) => getComputedStyle(e).backgroundColor);
   await open(page, '#/');
   assert((await theme()).join() === 'light,auto', 'по умолчанию «как в системе» → светлая');
-  eq(await bg('body'), 'rgb(244, 245, 247)', 'светлый фон');
+  eq(await bg('body'), 'rgb(242, 243, 245)', 'светлый фон');
   // кнопка в шапке: как в системе → светлая → тёмная → как в системе
   await page.click('#themeBtn');
   assert((await theme()).join() === 'light,light', 'первое нажатие: светлая');
   await page.click('#themeBtn');
   assert((await theme()).join() === 'dark,dark', 'второе нажатие: тёмная');
-  eq(await bg('body'), 'rgb(15, 22, 32)', 'тёмный фон');
+  eq(await bg('body'), 'rgb(14, 20, 27)', 'тёмный фон');
   assert((await page.getAttribute('meta[name=theme-color]', 'content')) === '#0c121a', 'цвет адресной строки браузера');
   // сохранение: после перезагрузки тема уже применена в самом начале (до отрисовки страницы)
   await page.reload({ waitUntil: 'commit' });
@@ -793,7 +794,7 @@ await scenario('Тёмная тема: кнопка в шапке и выбор 
     const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
     const ratio = (a, b) => { const [x, y] = [lum(parse(a)), lum(parse(b))]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
     const pair = (sel, bgSel) => { const e = document.querySelector(sel); const b = document.querySelector(bgSel || sel); return [sel, ratio(getComputedStyle(e).color, getComputedStyle(b).backgroundColor)]; };
-    return [pair('.card h2', '.card'), pair('.card .muted', '.card'), pair('.btn-primary'), pair('.stat .label', '.stat'), pair('#nav a[aria-current=page]', '.sidebar'), pair('.pagehead .sub', 'body'), pair('table.data td', 'table.data')].filter(Boolean);
+    return [pair('.dash-sec h2', 'body'), pair('.facts dt', 'body'), pair('.btn-primary'), pair('.stat .label', '.stat'), pair('#nav a[aria-current=page]'), pair('#nav a:not([aria-current])', '.sidebar'), pair('.pagehead .sub', 'body'), pair('.mini-table td', 'body'), pair('.nav-group-label', '.sidebar')].filter(Boolean);
   });
   for (const [sel, r] of ratios) assert(r >= 4.5, `контраст ${sel}: ${r.toFixed(2)} < 4.5`);
   // печать всегда светлая
@@ -818,10 +819,84 @@ await scenario('Тёмная тема: кнопка в шапке и выбор 
   // графики и обход в тёмной теме открываются без ошибок
   await page.click('[data-theme-opt=dark]');
   await go(page, '#/');
-  await page.waitForSelector('canvas');
+  await page.waitForSelector('.kpis');
+  await go(page, '#/reports');
+  await page.waitForSelector('.tabs');
   await go(page, '#/rounds');
   await page.waitForSelector('section.round-class');
-  assert((await bg('section.round-class')) !== 'rgb(233, 236, 240)', 'классы обхода перекрашены в тёмной теме');
+  assert((await bg('section.round-class')) !== 'rgb(236, 239, 243)', 'классы обхода перекрашены в тёмной теме');
+});
+
+await scenario('Интерфейс: меню по группам с иконками, таблица (выбор, пагинация, массовый перевод), нет emoji, единый набор иконок', async (page) => {
+  await loadDemo(page);
+  await go(page, '#/');
+  // меню: три группы, у каждого пункта своя svg-иконка из единого набора
+  eq(await page.locator('#nav .nav-group').count(), 3, 'три группы меню');
+  eq((await page.locator('#nav .nav-group-label').allTextContents()).join('|'), 'Учебный год|Система', 'подписи групп');
+  const items = await page.$$eval('#nav a', (as) => as.map((a) => [a.dataset.route, !!a.querySelector('svg.ico'), a.querySelector('.nav-label').textContent]));
+  eq(items.map((x) => x[0]).join(','), 'dashboard,rounds,classes,students,staff,new-year,history,reports,archive,import,access,settings', 'порядок разделов');
+  assert(items.every((x) => x[1]), 'у каждого пункта есть иконка');
+  eq(await page.$$eval('#nav a[aria-current=page]', (e) => e.length), 1, 'активный раздел один');
+  // во всём интерфейсе нет emoji и случайных символов-иконок
+  for (const h of ['#/', '#/rounds', '#/classes', '#/students', '#/staff', '#/settings', '#/reports', '#/archive']) {
+    await go(page, h);
+    await page.waitForSelector('h1');
+    const bad = await page.evaluate(() => document.body.innerText.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{25A0}-\u{25FF}]/gu));
+    assert(!bad, `${h}: найдены символы вместо иконок: ${bad}`);
+  }
+  // таблица учеников: постраничный вывод
+  await go(page, '#/students');
+  await page.waitForSelector('table.data');
+  eq(await page.locator('table.data tbody tr').count(), 50, '50 строк на странице');
+  assert((await page.textContent('.pager')).includes('1–50 из 412'), 'счётчик страницы');
+  await page.click('button[aria-label="Следующая страница"]');
+  assert((await page.textContent('.pager')).includes('51–100 из 412'), 'вторая страница');
+  await page.selectOption('.pager select', '100');
+  eq(await page.locator('table.data tbody tr').count(), 100, '100 строк на странице');
+  await page.selectOption('.pager select', '25');
+  // сортировка по классу и поиск сбрасывают страницу
+  await page.fill('input[aria-label="Поиск по ФИО"]', 'Демо Ученик 7A-05');
+  await page.waitForFunction(() => document.querySelectorAll('table.data tbody tr').length === 1);
+  assert(!(await page.locator('.pager').count()), 'при одной строке пагинации нет');
+  await page.fill('input[aria-label="Поиск по ФИО"]', '');
+  // массовый выбор и перевод
+  await page.waitForFunction(() => document.querySelectorAll('table.data tbody tr').length === 25);
+  await page.locator('table.data tbody tr').nth(0).locator('input[type=checkbox]').check();
+  await page.locator('table.data tbody tr').nth(1).locator('input[type=checkbox]').check();
+  assert((await page.textContent('.bulkbar')).includes('Выбрано: 2'), 'панель массовых действий');
+  const ids = await page.$$eval('table.data tbody tr.is-selected td:nth-child(2) a', (as) => as.map((a) => a.textContent));
+  eq(ids.length, 2, 'две выбранные строки подсвечены');
+  await page.click('.bulkbar button[data-bulk=move]');
+  await modal(page).locator('select').selectOption('2026-2027:11C');
+  await modal(page).locator('button:has-text("Перевести")').last().click();
+  await page.waitForSelector('.bulkbar', { state: 'detached' });
+  eq(await state(page, `S.enrollments.filter(e => e.classId === '2026-2027:11C' && ${JSON.stringify(ids)}.some((n) => S.students.find((s) => s.id === e.studentId && (s.lastName + ' ' + s.firstName + ' ' + s.middleName).includes(n.split(' ')[0])))).length > 0`), true, 'выбранные переведены в 11C');
+  // «выбрать все на странице» и «снять выбор»
+  await page.locator('table.data thead input[type=checkbox]').check();
+  assert((await page.textContent('.bulkbar')).includes('Выбрано: 25'), 'выбраны все на странице');
+  await page.click('.bulkbar button:has-text("Снять выбор")');
+  await page.waitForSelector('.bulkbar', { state: 'detached' });
+  // классы — таблица с поиском и фильтром по параллели
+  await go(page, '#/classes');
+  await page.waitForSelector('table.data');
+  eq(await page.locator('table.data tbody tr').count(), 15, '15 классов в таблице');
+  await page.selectOption('select[aria-label="Параллель"]', '9');
+  eq(await page.locator('table.data tbody tr').count(), 3, 'фильтр по параллели');
+});
+
+await scenario('Все страницы на четырёх размерах экрана: без горизонтальной прокрутки и ошибок в консоли', async (page) => {
+  await loadDemo(page);
+  const hashes = ['#/', '#/rounds', '#/classes', classHash('7A'), '#/students', '#/staff', '#/new-year', '#/history', '#/reports', '#/archive', '#/import', '#/access', '#/settings', '#/search?q=7A'];
+  for (const [w, h] of [[1440, 900], [1024, 768], [768, 1024], [375, 812]]) {
+    await page.setViewportSize({ width: w, height: h });
+    for (const hash of hashes) {
+      await go(page, hash);
+      await page.waitForSelector('h1');
+      await page.waitForTimeout(80);
+      const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
+      assert(o.sw <= o.iw + 1, `${w}×${h} ${hash}: горизонтальная прокрутка ${o.sw} > ${o.iw}`);
+    }
+  }
 });
 
 await scenario('Экспорт JSON, очистка, восстановление из файла и из копии в браузере, CSV-экспорт', async (page) => {
@@ -880,9 +955,9 @@ await scenario('Google Таблицы: проверка, выгрузка (ст�
   await page.fill('input[name=sheetsUrl]', 'https://script.google.com/macros/s/TEST/exec');
   await page.fill('input[name=sheetsToken]', 'секретный-токен');
   await page.click('#sheets button:has-text("Проверить соединение")');
-  await page.waitForSelector('#sheets .notice:has-text("Соединение установлено")');
+  await page.waitForSelector('.status-line:has-text("Соединение установлено")');
   await page.click('#syncNowBtn');
-  await page.waitForSelector('#sheets .notice:has-text("Синхронизировано")');
+  await page.waitForSelector('.status-line:has-text("Синхронизировано")');
   eq(posts.length, 1, 'один POST');
   const p = posts[0];
   eq(p.type, 'lyceum-sync', 'тип');
@@ -896,7 +971,7 @@ await scenario('Google Таблицы: проверка, выгрузка (ст�
   // ошибка сервера
   mode = 'fail';
   await page.click('#syncNowBtn');
-  await page.waitForSelector('#sheets .notice:has-text("Ошибка синхронизации")');
+  await page.waitForSelector('.status-line:has-text("Ошибка синхронизации")');
   // автосинхронизация при открытии: есть изменения → после загрузки уходит POST
   mode = 'ok';
   await go(page, classHash('7A'));
@@ -921,7 +996,16 @@ for (const [name, vp] of [['смартфон 375×812', { width: 375, height: 81
       const w = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
       assert(w.sw <= w.iw + 1, `${h}: горизонтальная прокрутка (${w.sw} > ${w.iw})`);
     }
-    if (vp.width < 1024) {
+    if (vp.width >= 768 && vp.width < 1024) {
+      // планшет: узкая колонка иконок вместо выезжающего меню
+      assert(await page.locator('#sidebar').isVisible(), 'на планшете меню видно как колонка иконок');
+      const sbw = await page.$eval('#sidebar', (e) => Math.round(e.getBoundingClientRect().width));
+      assert(sbw < 80, `колонка узкая (${sbw}px)`);
+      assert(!(await page.locator('#nav .nav-label').first().isVisible()), 'подписи скрыты, остались иконки');
+      assert(!(await page.locator('#menuBtn').isVisible()), 'кнопки «Меню» на планшете нет');
+      await page.click('#nav a[data-route=students]');
+      await page.waitForSelector('h1:has-text("Ученики")');
+    } else if (vp.width < 768) {
       assert(!(await page.locator('#sidebar').isVisible()), 'меню скрыто');
       await page.click('#menuBtn');
       await page.waitForSelector('#sidebar', { state: 'visible' });
@@ -990,7 +1074,8 @@ await scenario('Настройки: название лицея, резервн�
   await page.fill('input[name=name]', 'Лицей №1 (тест)');
   await page.click('button:has-text("Сохранить") >> nth=0');
   await page.waitForFunction(() => window.__lyceum.store.state.settings.lyceumName === 'Лицей №1 (тест)');
-  eq((await page.textContent('#brandName')).trim(), 'Лицей №1 (тест)', 'название в шапке');
+  eq((await page.textContent('#brandName')).trim(), 'Костанай БИЛ', 'название системы в шапке меню неизменно');
+  eq((await page.textContent('#brandSub')).trim(), 'Лицей №1 (тест)', 'название лицея под названием системы');
   await page.click('button:has-text("Создать копию в браузере")');
   await page.waitForSelector('.backup-list li');
   await page.click('button:has-text("Удалить DEMO-данные")');

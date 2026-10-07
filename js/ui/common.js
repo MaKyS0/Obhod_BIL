@@ -2,6 +2,7 @@
 import { h } from './dom.js';
 import { fullName } from '../domain/people.js';
 import { yearLabel } from '../domain/years.js';
+import { icon } from './icons.js';
 
 export function pageHead({ title, sub, actions = [], crumbs = null }) {
   return h(
@@ -12,8 +13,22 @@ export function pageHead({ title, sub, actions = [], crumbs = null }) {
   );
 }
 
-export const btn = (label, onclick, kind = '', extra = {}) => h('button', { type: 'button', class: `btn ${kind ? `btn-${kind}` : ''}`.trim(), onclick, ...extra }, label);
-export const link = (label, href, kind = '') => h('a', { class: `btn ${kind ? `btn-${kind}` : ''}`.trim(), href }, label);
+// Кнопки. kind: '' (вторичная) | primary | danger | danger-outline | ghost, плюс sm / lg. extra.icon — имя иконки слева;
+// пустая подпись + icon = кнопка-иконка (обязательно передайте 'aria-label').
+const btnClass = (kind, iconOnly) => `btn${kind ? ' ' + kind.split(' ').map((k) => `btn-${k}`).join(' ') : ''}${iconOnly ? ' btn-icon' : ''}`;
+function btnContent(label, ic) {
+  return [ic ? icon(ic, 16) : null, label ? (ic ? h('span', null, label) : label) : null];
+}
+export const btn = (label, onclick, kind = '', extra = {}) => {
+  const { icon: ic, ...attrs } = extra;
+  // С иконкой подпись может скрываться на узких экранах (CSS), поэтому имя кнопки дублируем в aria-label и подсказку.
+  const names = ic && label ? { 'aria-label': label, title: label } : {};
+  return h('button', { type: 'button', class: btnClass(kind, !label && !!ic), onclick, ...names, ...attrs }, btnContent(label, ic));
+};
+export const link = (label, href, kind = '', extra = {}) => {
+  const { icon: ic, ...attrs } = extra;
+  return h('a', { class: btnClass(kind, !label && !!ic), href, ...attrs }, btnContent(label, ic));
+};
 
 export function classLink(cls, text) {
   return cls ? h('a', { href: `#/class/${encodeURIComponent(cls.id)}` }, text || cls.name) : h('span', { class: 'muted' }, '—');
@@ -30,12 +45,13 @@ export function demoBadge(rec) {
   return rec && rec.demo ? badge('DEMO', 'demo') : null;
 }
 
-export function emptyState(title, text, actions = []) {
-  return h('div', { class: 'empty' }, h('h3', null, title), text ? h('p', null, text) : null, actions.length ? h('div', { class: 'actions' }, actions) : null);
+export function emptyState(title, text, actions = [], ic = 'info') {
+  return h('div', { class: 'empty' }, h('div', { class: 'empty-ico' }, icon(ic, 20)), h('h3', null, title), text ? h('p', null, text) : null, actions.length ? h('div', { class: 'actions' }, actions) : null);
 }
 
+const NOTICE_ICON = { info: 'info', warn: 'alert', danger: 'alert', ok: 'check' };
 export function notice(kind, ...children) {
-  return h('div', { class: `notice ${kind}` }, children);
+  return h('div', { class: `notice ${kind}` }, icon(NOTICE_ICON[kind] || 'info', 16), h('div', { class: 'notice-body' }, children));
 }
 
 export function studentStatusBadge(student, enr) {

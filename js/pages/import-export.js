@@ -191,7 +191,7 @@ export function render(ctx) {
 
   el.append(h('div', { class: 'card', style: 'margin-top:16px' }, h('h2', null, 'Импортировать данные'),
     h('p', { class: 'muted' }, 'Поддерживаются CSV (в том числе сохранённый из Excel; кодировки UTF-8 и Windows-1251, разделители «;», «,», табуляция), а также JSON. Excel-файл (.xlsx) сначала сохраните как «CSV».'),
-    h('div', { class: 'field' }, h('div', { class: 'label' }, 'Что импортируем'), kindR.map((x) => x.el)),
+    h('div', { class: 'field' }, h('div', { class: 'label' }, 'Что импортируем'), h('div', { class: 'radio-grid' }, kindR.map((x) => x.el))),
     h('div', { class: 'field' }, h('label', { for: 'importFile' }, 'Файл'), fileInput),
     h('div', { class: 'field' }, h('label', { for: 'importText' }, 'Или вставьте данные'), paste), parseBtn,
     h('div', { class: 'notice info', style: 'margin-top:12px' }, h('strong', null, 'Зашифрованные данные лицея. '), 'Файл ', h('code', null, 'data/lyceum-data.enc.json'), ' (или такой же файл, выбранный выше) расшифровывается паролем в вашем браузере и проходит обычный предпросмотр импорта. ', btn('Загрузить зашифрованные данные лицея', loadFromRepo, 'sm', { id: 'loadEncBtn' })),
