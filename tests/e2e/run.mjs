@@ -502,8 +502,8 @@ await scenario('Допуск: запрос → письмо владельцу �
     await o.page.click('tr:has-text("Мария Петрова") [data-act=revoke]');
     await o.page.locator('dialog.modal[open] button:has-text("Отозвать доступ")').click();
     await o.page.waitForSelector('tr:has-text("Мария Петрова"):has-text("Отозван")');
-    await v.page.reload();
-    await v.page.waitForSelector('h1:has-text("Доступ отозван")');
+    // Устройство само узнаёт об отзыве (общая база отвечает «forbidden») и перезагружается — свою перезагрузку не гоняем наперегонки с ней.
+    await v.page.waitForSelector('h1:has-text("Доступ отозван")', { timeout: 8000 });
     await v.page.waitForTimeout(300);
     eq(await v.page.evaluate(async () => (await indexedDB.databases()).some((d) => d.name === 'lyceum-db')), false, 'база посетителя удалена');
     assert(!(await v.page.locator('#sidebar').isVisible()), 'отозванный не видит сайт');
