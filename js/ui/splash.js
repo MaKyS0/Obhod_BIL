@@ -2,12 +2,15 @@
 // Показывается не короче MIN_MS, чтобы анимация успела сыграть; нажатие или клавиша пропускают её. Без анимации (автотесты, «уменьшить движение») скрыт CSS.
 import { animationsOn } from './anim.js';
 
-const MIN_MS = () => (typeof globalThis.__LYCEUM_SPLASH_MS__ === 'number' ? globalThis.__LYCEUM_SPLASH_MS__ : 1900);
+// Полная анимация — при первом открытии в этой вкладке; при перезагрузках в той же вкладке экран короткий (человек уже его видел).
+const seen = () => { try { const s = sessionStorage.getItem('lyceum-splash') === '1'; sessionStorage.setItem('lyceum-splash', '1'); return s; } catch { return false; } };
+const MIN_MS = (again) => (typeof globalThis.__LYCEUM_SPLASH_MS__ === 'number' ? globalThis.__LYCEUM_SPLASH_MS__ : again ? 700 : 1900);
 
 export function createSplash() {
   const el = document.getElementById('splash');
   if (!el) return { status() {}, hide() {} };
   const t0 = performance.now();
+  const again = seen();
   let skip = false;
   let hiding = false;
   const onSkip = () => { skip = true; };
@@ -23,7 +26,7 @@ export function createSplash() {
     hide() {
       if (hiding) return;
       hiding = true;
-      const wait = skip || !animationsOn() ? 0 : Math.max(0, MIN_MS() - (performance.now() - t0));
+      const wait = skip || !animationsOn() ? 0 : Math.max(0, MIN_MS(again) - (performance.now() - t0));
       setTimeout(() => {
         if (!animationsOn()) { el.remove(); return; }
         el.classList.add('leaving');

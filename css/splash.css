@@ -9,7 +9,7 @@
 .splash-title { font-size: 20px; font-weight: 600; letter-spacing: .02em; }
 .splash-sub { margin-top: 4px; font-size: 13px; color: var(--muted); }
 .splash-bar { position: relative; width: 168px; height: 2px; margin-top: 26px; background: var(--border); overflow: hidden; }
-.splash-bar i { position: absolute; top: 0; bottom: 0; left: 0; width: 38%; background: var(--primary); }
+.splash-bar i { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; background: var(--primary); transform-origin: left center; }
 .splash-status { min-height: 1.4em; margin-top: 10px; font-size: 12px; color: var(--muted); }
 
 /* Анимация: орнамент «распускается» по кусочкам от центра, птица влетает по диагонали вдоль книг и зависает с лёгким покачиванием;
@@ -19,7 +19,7 @@
 @keyframes sp-float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(1.5px, -3px); } }
 @keyframes sp-title { from { opacity: 0; letter-spacing: .2em; transform: translateY(6px); } to { opacity: 1; letter-spacing: .02em; transform: none; } }
 @keyframes sp-sub { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-@keyframes sp-bar { from { transform: translateX(-100%); } to { transform: translateX(450%); } }
+@keyframes sp-bar { from { transform: scaleX(.04); } to { transform: scaleX(.92); } }
 @keyframes sp-out { to { transform: translateY(-100%); } }
 @keyframes sp-inner-out { to { opacity: 0; transform: scale(.96); } }
 @keyframes sp-failsafe { to { transform: translateY(-100%); visibility: hidden; } }
@@ -39,7 +39,7 @@
 .splash-title { animation: sp-title .6s var(--ease) 1s both; }
 .splash-sub { animation: sp-sub .5s var(--ease) 1.25s both; }
 .splash-bar { animation: fade .3s ease .6s both; }
-.splash-bar i { animation: sp-bar 1.3s linear .6s infinite; }
+.splash-bar i { animation: sp-bar 1.8s cubic-bezier(.3,.7,.3,1) .6s both; } /* один заход к ~90%, а не бесконечная лента: дальше ждём реальной готовности */
 .splash-status { animation: fade .3s ease .9s both; }
 
 .splash.leaving { pointer-events: none; animation: sp-out .5s var(--ease) forwards; }

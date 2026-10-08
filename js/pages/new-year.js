@@ -137,7 +137,7 @@ function openWizard(ctx) {
       h('ul', { class: 'preview-list', 'aria-label': 'Предварительный список переходов' }, plan.rows.map((r) => h('li', { class: `${r.count === 0 ? 'zero' : ''} ${r.kind !== 'promote' && r.count ? 'grad' : ''}`.trim() }, h('span', null, r.text)))),
       h('p', { class: 'muted', style: 'margin-top:8px' }, `Переводится: ${plan.totals.promoted}, выпуск: ${plan.totals.graduates + plan.totals.pending}, остаются на второй год: ${plan.totals.held}. Классы 7-й параллели нового набора создаются пустыми.`),
     );
-    plan.warnings.forEach((w) => warnBox.append(notice('warn', w)));
+    plan.warnings.forEach((w) => warnBox.append(notice('info', w))); // ожидаемые последствия, а не тревога: жёлтым остаётся только выпуск
     if (plan.hasGraduates) {
       gradBox.append(notice('warn', h('strong', null, 'Ученики 11 классов выпускаются.'), ' Переместить их в архив?'));
     }

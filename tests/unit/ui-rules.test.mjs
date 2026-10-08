@@ -69,3 +69,15 @@ test('логотип: эмблема на экране загрузки (index.h
   assert.equal(/class="lg-bird" d="([^"]+)"/.exec(splash)[1], LOGO_BIRD);
   assert.equal(LOGO_ORNAMENT.length, 10);
 });
+
+test('контраст: приглушённые цвета текста проходят WCAG AA (4,5:1) на своих фонах в светлой и тёмной темах', () => {
+  const lum = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const tokens = (css) => Object.fromEntries([...css.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-f]{6})\b/gi)].map((m) => [m[1], m[2]]));
+  const base = tokens(fs.readFileSync(path.join(ROOT, 'css/base.css'), 'utf8'));
+  const dark = { ...base, ...tokens(fs.readFileSync(path.join(ROOT, 'css/dark.css'), 'utf8')) };
+  const pairs = [['muted', 'bg'], ['muted', 'surface'], ['muted', 'surface-2'], ['text-2', 'bg'], ['side-muted', 'side-bg'], ['side-muted', 'side-hover'], ['side-muted', 'side-active'], ['primary', 'surface'], ['warning', 'warning-weak'], ['danger', 'danger-weak'], ['success', 'success-weak']];
+  const low = [];
+  for (const [name, set] of [['светлая', base], ['тёмная', dark]]) for (const [fg, bg] of pairs) if (ratio(set[fg], set[bg]) < 4.5) low.push(`${name}: --${fg} на --${bg} = ${ratio(set[fg], set[bg]).toFixed(2)}`);
+  assert.deepEqual(low, []);
+});

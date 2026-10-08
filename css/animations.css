@@ -26,13 +26,12 @@ dialog.modal[open]::backdrop { animation: fade .18s ease-out; }
 /* Индикаторы */
 .sync-status[data-kind="warn"] .dot { animation: pulse-dot 1.1s ease-in-out infinite; }
 .loading { animation: fade .5s ease-out; }
-.loading::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 8px; border-radius: 50%; background: currentColor; animation: pulse-dot 1s ease-in-out infinite; vertical-align: middle; }
 
 /* Вечерний обход */
 .round-class { transition: background-color .35s var(--ease), border-color .35s var(--ease); }
 .round-class.just-done { animation: pop .4s var(--ease), glow-green .8s ease-out; }
 .round-body.opening { animation: open-body .18s var(--ease); }
-.round-progress > i { transition: width .45s var(--ease); }
+.round-progress > i { transition: transform .45s var(--ease); }
 .rp { transition: background-color .12s, border-color .12s, color .12s, transform .1s; }
 .rp.tapped { animation: tap-pop .25s var(--ease); }
 .rc b.bump { display: inline-block; animation: tap-pop .3s var(--ease); }

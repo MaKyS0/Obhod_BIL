@@ -53,7 +53,7 @@ export function render(ctx) {
     sub.textContent = `${ui.date === today ? 'Сегодня' : formatDate(ui.date)} · отмечено ${totals.marked} из ${totals.total} · готово классов: ${v.doneClasses} из ${v.groups.length}`;
 
     const pct = totals.total ? Math.round((totals.marked / totals.total) * 100) : 0;
-    bar.style.width = `${pct}%`;
+    bar.style.transform = `scaleX(${pct / 100})`;
     progress.setAttribute('aria-valuemax', String(totals.total));
     progress.setAttribute('aria-valuenow', String(totals.marked));
     const num = (key, value) => {
@@ -94,9 +94,7 @@ export function render(ctx) {
 
     const rest = g.students.filter((x) => !x.place).map((x) => x.student.id);
     const body = h('div', { class: `round-body${ui.fx.open === g.id ? ' opening' : ''}` });
-    if (rest.length > 1) {
-      body.append(h('div', { class: 'round-bulk' }, btn(`Всем неотмеченным (${rest.length}): Ночует`, () => bulk(g, rest), 'sm', { 'data-bulk': g.id })));
-    }
+    const bulkBar = rest.length > 1 ? h('div', { class: 'round-bulk' }, btn(`Всем неотмеченным (${rest.length}): Ночует`, () => bulk(g, rest), 'primary', { 'data-bulk': g.id })) : null;
     for (const { student, place, reason } of g.students) {
       body.append(h('div', { class: 'round-row', 'data-place': place || '', 'data-student': student.id },
         h('span', { class: 'round-name' }, fullName(student)),
@@ -107,6 +105,7 @@ export function render(ctx) {
           }, p.label))),
         place ? h('button', { type: 'button', class: `round-reason${reason ? ' has' : ''}`, 'data-reason-for': student.id, onclick: () => askReason(student, place, reason) }, reason ? [h('span', { class: 'rr-label' }, 'Причина: '), reason] : [icon('plus', 14), 'Причина']) : null));
     }
+    if (bulkBar) body.append(bulkBar); // внизу списка: липнет к нижнему краю экрана, пока класс открыт
     sec.append(body);
     return sec;
   }

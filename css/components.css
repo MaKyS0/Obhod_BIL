@@ -27,7 +27,7 @@
 .btn-icon.btn-sm { width: 28px; min-width: 28px; }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; pointer-events: none; }
 .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-@media (pointer: coarse) { .btn { min-height: 40px; } .btn-sm { min-height: 36px; } .btn-icon { width: 40px; } .btn-icon.btn-sm { width: 36px; } }
+@media (pointer: coarse) { .btn { min-height: 44px; } .btn-sm { min-height: 40px; } .btn-icon { width: 44px; } .btn-icon.btn-sm { width: 40px; } .sec-link { min-height: 32px; } }
 
 /* ---------- Формы ---------- */
 input, select, textarea {
@@ -37,15 +37,15 @@ input, select, textarea {
 }
 select { padding-right: 28px; }
 textarea { min-height: 72px; resize: vertical; width: 100%; }
-input::placeholder, textarea::placeholder { color: #8c97a6; }
+input::placeholder, textarea::placeholder { color: #626d7d; }
 input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: #a9b2bf; }
 input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--ring); outline: none; }
 input:disabled, select:disabled, textarea:disabled { background: var(--surface-3); color: var(--muted); border-color: var(--border); cursor: not-allowed; }
 input[type="checkbox"], input[type="radio"] { min-height: 0; width: 16px; height: 16px; padding: 0; accent-color: var(--primary); box-shadow: none; }
 input[type="search"] { -webkit-appearance: none; appearance: none; }
 @media (max-width: 767px), (pointer: coarse) {
-  input, select, textarea { font-size: 16px; min-height: 42px; }
-  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; min-height: 0; }
+  input, select, textarea { font-size: 16px; min-height: 44px; }
+  input[type="checkbox"], input[type="radio"] { width: 24px; height: 24px; min-height: 0; }
 }
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-width: 0; }
 .field > label, .field > .label { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
@@ -120,9 +120,16 @@ table.data td.actions .btn-primary { background: var(--primary); color: #fff; bo
 table.data td.actions .btn-primary:hover { background: var(--primary-hover); }
 table.data td.actions .btn-danger-outline { color: var(--muted); }
 table.data td.actions .btn-danger-outline:hover { background: var(--danger-weak); color: var(--danger); }
+table.data td.actions .btn-danger-outline { margin-left: 8px; }
 table.data td a:not(.btn) { text-decoration: none; font-weight: 500; }
 table.data td a:not(.btn):hover { text-decoration: underline; }
 table.data th.col-check, table.data td.col-check { width: 38px; padding-right: 0; }
+/* Широкие экраны: шапка таблицы остаётся на виду при прокрутке длинного списка (412 учеников) */
+@media (min-width: 1100px) {
+  .card.flush { overflow: clip; }
+  .table-wrap { overflow: visible; }
+  table.data thead th { position: sticky; top: var(--topbar-h); z-index: 2; }
+}
 table.data th button.sort { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
 table.data th button.sort .ico { color: var(--border-strong); }
 table.data th[aria-sort] button.sort .ico { color: var(--primary); }
@@ -232,6 +239,9 @@ dialog.modal form { display: flex; flex-direction: column; min-height: 0; flex: 
 
 /* ---------- Прочее ---------- */
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.file-picker { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; position: relative; }
+.file-picker input[type="file"] { position: absolute; left: 0; top: 0; width: 1px; height: 1px; min-height: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.file-picker .file-name { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
 .chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 8px; border: 1px solid var(--border); border-radius: 3px; font-size: 12.5px; background: var(--surface-2); }
 .chip.plain { padding-right: 8px; }
 .chip button { display: inline-grid; place-items: center; background: none; border: 0; cursor: pointer; color: var(--muted); padding: 2px; border-radius: 3px; }
@@ -260,5 +270,5 @@ textarea { max-width: 100%; }
   table.data td.actions .btn:has(> .ico) { width: 28px; min-width: 28px; min-height: 28px; padding: 0; }
   table.data td.actions .btn > span { display: none; }
 }
-@media (min-width: 640px) and (pointer: coarse) { table.data td.actions .btn:has(> .ico) { width: 40px; min-height: 40px; } }
+@media (min-width: 640px) and (pointer: coarse) { table.data td.actions .btn:has(> .ico) { width: 44px; min-height: 44px; } }
 table.data td:first-of-type a, table.data td.col-check + td a { overflow-wrap: normal; }

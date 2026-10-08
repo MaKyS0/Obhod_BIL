@@ -198,7 +198,7 @@ async function main() {
 
   function updateChrome() {
     const s = store.state.settings;
-    $('#brandSub').textContent = s.lyceumName || 'Информационная система';
+    $('#brandSub').textContent = s.lyceumName && s.lyceumName !== 'Лицей' ? s.lyceumName : 'Система учёта лицея';
     $('#yearBadge').replaceChildren(icon('calendar', 15), h('span', { class: 'yb-label' }, 'Учебный год'), h('strong', null, yearLabel(s.currentYearId)));
     const d = live ? describeLive(live.status) : describeSync(s);
     syncBtn.dataset.kind = d.kind;
@@ -215,7 +215,7 @@ async function main() {
     if (db.kind !== 'indexeddb') banners.push(h('div', { class: 'banner danger', role: 'alert' }, h('div', null, h('strong', null, 'Данные не сохраняются. '), `Хранилище браузера (IndexedDB) недоступно${db.fallbackReason ? ` (${db.fallbackReason})` : ''}. Возможно, включён приватный режим. Всё, что вы введёте, пропадёт после закрытия вкладки — экспортируйте данные в JSON.`)));
     if (versionBanner) banners.push(h('div', { class: 'banner warn' }, h('div', null, 'Сайт обновился в другой вкладке. Перезагрузите страницу.'), h('button', { class: 'btn btn-sm', type: 'button', onclick: () => location.reload() }, 'Перезагрузить')));
     const exp = s.lastExportAt ? new Date(s.lastExportAt).getTime() : 0;
-    if (store.state.students.length && Date.now() - exp > 14 * DAY && router.current?.name !== 'settings') {
+    if (store.state.students.length && Date.now() - exp > 14 * DAY && !['settings', 'rounds'].includes(router.current?.name)) { // на обходе напоминание отвлекает от отметок
       banners.push(h('div', { class: 'banner info' }, h('div', null, s.lastExportAt ? 'Резервная копия в файл не скачивалась больше 14 дней.' : 'Вы ещё не сохраняли резервную копию в файл. Данные хранятся только в этом браузере.'),
         h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => { try { await saveBackupFile(repo); toast('Резервная копия сохранена'); } catch (e) { toastError(e); } } }, 'Скачать копию')));
     }

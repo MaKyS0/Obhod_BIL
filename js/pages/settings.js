@@ -1,4 +1,5 @@
 // Настройки: одна страница с разделами (Общие · Доступ · Данные · Учебный процесс · Система) и навигацией слева.
+import { filePicker } from '../ui/file-picker.js';
 import { h } from '../ui/dom.js';
 import { pageHead, btn, link, badge, notice } from '../ui/common.js';
 import { icon } from '../ui/icons.js';
@@ -113,8 +114,9 @@ export async function render(ctx) {
       if (!v.ok) throw new Error(`Файл не подходит: ${v.errors.slice(0, 3).join('; ')}`);
       const ok = await confirmAction({ title: 'Восстановление из файла', message: 'Все текущие данные будут заменены данными из файла.', details: [`В файле: учеников — ${data.students.length}, сотрудников — ${data.staff.length}, учебных годов — ${data.years.length}.`, 'Текущее состояние будет сохранено в автоматической резервной копии.'], confirmLabel: 'Заменить данные', typeToConfirm: 'ЗАМЕНИТЬ' });
       if (ok) { await repo.restoreBackup(data); toast('Данные восстановлены'); location.hash = '#/'; }
-    } catch (e) { toastError(e); } finally { restoreFile.value = ''; }
+    } catch (e) { toastError(e); } finally { restoreFile.value = ''; restorePicker.sync(); }
   } });
+  const restorePicker = filePicker(restoreFile);
 
   const storageInfo = h('p', null, 'Проверяем…');
   (async () => {
@@ -158,7 +160,7 @@ export async function render(ctx) {
       h('div', { class: 'row', style: 'margin:0 0 10px' },
         btn('Создать копию в браузере', async () => { try { await store.createBackup('manual'); toast('Копия создана'); ctx.refresh(); } catch (e) { toastError(e); } }, '', { icon: 'database' }),
         btn('Скачать резервную копию (JSON)', async () => { await saveBackupFile(repo); toast('Файл сохранён'); }, 'primary', { icon: 'download' })),
-      h('div', { class: 'field owner-only' }, h('label', { for: 'restoreFile' }, 'Восстановить из файла (JSON)'), restoreFile),
+      h('div', { class: 'field owner-only' }, h('label', { for: 'restoreFile' }, 'Восстановить из файла (JSON)'), restorePicker.el),
       backups.length ? list : h('p', { class: 'muted' }, 'Копий в браузере пока нет.')),
     row('Хранилище', 'Где лежат данные на этом устройстве.', storageInfo,
       notice('info', 'Данные хранятся в IndexedDB этого браузера. Очистка данных сайта в браузере удалит локальную копию; с общей базой данные вернутся с сервера, иначе — из резервной копии.'))));

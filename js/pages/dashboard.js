@@ -6,6 +6,7 @@ import { toast, toastError } from '../ui/toast.js';
 import { confirmAction } from '../ui/modal.js';
 import { yearView, staffCounts } from '../domain/stats.js';
 import { nStudents, nClasses } from '../domain/plural.js';
+import { fullName } from '../domain/people.js';
 import { roundView } from '../domain/rounds.js';
 import { recentChanges } from '../domain/activity.js';
 import { todayISO, formatDateTime } from '../domain/dates.js';
@@ -95,8 +96,8 @@ export function render(ctx) {
   // ---- Ключевые числа ----
   el.append(h('div', { class: 'kpis' },
     stat('#/students', 'Ученики', v.total, `${nClasses(v.classCount)} · ${v.grades.length} параллелей`),
-    stat('#/staff', 'Классные руководители', v.teachersAssigned, `в штате: ${sc.teachers}`, { of: v.classCount, flag: v.classesWithoutTeacher.length > 0 }),
-    stat('#/staff', 'Воспитатели', v.tutorsAssigned, `в штате: ${sc.tutors}`, { of: v.classCount, flag: v.classesWithoutTutor.length > 0 }),
+    stat('#/staff', 'Классные руководители', v.teachersAssigned, sc.teachers === v.teachersAssigned ? 'назначены во всех классах' : `в штате: ${sc.teachers}`, { of: v.classCount, flag: v.classesWithoutTeacher.length > 0 }),
+    stat('#/staff', 'Воспитатели', v.tutorsAssigned, sc.tutors === v.tutorsAssigned ? 'назначены во всех классах' : `в штате: ${sc.tutors}`, { of: v.classCount, flag: v.classesWithoutTutor.length > 0 }),
     stat('#/rounds', 'Обход сегодня', round.totals.total ? round.totals.marked : '—', round.totals.total ? `классов готово: ${round.doneClasses} из ${round.groups.length}` : 'нет учеников', { of: round.totals.total || null }),
     stat('#/archive', 'В архиве', archived, 'выпускники и выбывшие'),
   ));
@@ -104,15 +105,28 @@ export function render(ctx) {
   // ---- Левая колонка: обход и параллели ----
   const t = round.totals;
   const pct = t.total ? Math.round((t.marked / t.total) * 100) : 0;
+  // Кто болеет сегодня и какие классы ещё не закрыты — то, ради чего открывают главную (данные уже есть в обходе)
+  const sickNow = round.groups.flatMap((g) => g.students.filter((x) => x.place === 'sick').map((x) => ({ g, ...x })));
+  const sickList = sickNow.length ? h('div', { class: 'rm-list' },
+    h('div', { class: 'rm-list-title' }, 'Болеют сегодня'),
+    h('ul', null, sickNow.slice(0, 5).map((x) => h('li', null, h('span', { class: 'who' }, fullName(x.student)), h('span', { class: 'meta' }, x.g.name), x.reason ? h('span', { class: 'why' }, x.reason) : null))),
+    sickNow.length > 5 ? h('a', { class: 'sec-link', href: '#/rounds' }, `и ещё ${sickNow.length - 5}`, icon('chevron-right', 14)) : null) : null;
+  const unfinished = round.groups.filter((g) => !g.done);
+  const openList = t.total && unfinished.length && unfinished.length < round.groups.length ? h('div', { class: 'rm-list' },
+    h('div', { class: 'rm-list-title' }, `Не закрыты (${unfinished.length})`),
+    h('div', { class: 'chips' }, unfinished.slice(0, 10).map((g) => h('a', { class: 'chip plain', href: '#/rounds' }, `${g.name} · ${g.marked}/${g.total}`)),
+      unfinished.length > 10 ? h('span', { class: 'meta' }, `и ещё ${unfinished.length - 10}`) : null)) : null;
   const cell = (cls, label, n) => h('div', { class: `rm-cell ${cls}` }, h('b', null, String(n)), h('span', null, label));
   const roundBox = h('div', { class: 'round-meter' },
     h('div', { class: 'rm-top' }, h('span', null, 'Отмечено ', h('b', null, `${t.marked} из ${t.total}`)), h('span', null, `${pct}%`)),
-    h('div', { class: 'round-progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': t.total, 'aria-valuenow': t.marked, 'aria-label': 'Отмечено на вечернем обходе' }, h('i', { style: `width:${pct}%` })),
+    h('div', { class: 'round-progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': t.total, 'aria-valuenow': t.marked, 'aria-label': 'Отмечено на вечернем обходе' }, h('i', { style: `transform:scaleX(${pct / 100})` })),
     h('div', { class: 'rm-grid' },
-      cell('rm-sleeping', 'Ночует', t.byPlace.sleeping),
       cell('rm-sick', 'Болеет', t.byPlace.sick),
       cell('rm-home', 'С дома', t.byPlace.home),
-      cell('rm-none', 'Не отмечено', t.total - t.marked)));
+      cell('rm-sleeping', 'Ночует', t.byPlace.sleeping),
+      cell('rm-none', 'Не отмечено', t.total - t.marked)),
+    sickList,
+    openList);
   const max = Math.max(1, ...v.grades.map((g) => g.count));
   const grades = h('table', { class: 'mini-table' },
     h('thead', null, h('tr', null, h('th', null, 'Параллель'), h('th', { class: 'num' }, 'Классов'), h('th', { class: 'num' }, 'Учеников'), h('th', { class: 'bar-cell', 'aria-hidden': 'true' }))),

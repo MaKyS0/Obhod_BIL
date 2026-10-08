@@ -34,7 +34,7 @@
     --side-bg: #0b1016;
     --side-border: #1e2935;
     --side-text: #b9c5d3;
-    --side-muted: #7a8aa0;
+    --side-muted: #8d9bb0;
     --side-hover: #16202b;
     --side-active: #1b2735;
 
@@ -53,7 +53,8 @@
   html[data-theme="dark"] .btn-danger:hover { background: #cc4a40; border-color: #cc4a40; }
   html[data-theme="dark"] .rp-home[aria-pressed="true"] { background: #b86d0a; }
   html[data-theme="dark"] input, html[data-theme="dark"] select, html[data-theme="dark"] textarea { background: #101a24; }
-  html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color: #66778c; }
+  html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color: #8191a6; }
+  html[data-theme="dark"] .skip-link, html[data-theme="dark"] .skip-link:hover { color: #0b1016; }
   html[data-theme="dark"] input:hover:not(:disabled), html[data-theme="dark"] select:hover:not(:disabled) { border-color: #51647a; }
   html[data-theme="dark"] input[type="date"] { color-scheme: dark; }
   html[data-theme="dark"] .global-search input { background: #101a24; }
@@ -71,6 +72,6 @@
 /* Переключатель темы */
 .theme-btn { position: relative; flex: none; display: inline-grid; place-items: center; width: 32px; height: 30px; padding: 0; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-2); cursor: pointer; transition: background-color .12s, color .12s; }
 .theme-btn:hover { background: var(--surface-3); color: var(--text); }
-@media (pointer: coarse) { .theme-btn { width: 40px; height: 40px; } }
+@media (pointer: coarse) { .theme-btn { width: 44px; height: 44px; } }
 html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after { transition: background-color .3s ease, color .3s ease, border-color .3s ease !important; }
 @media print { .theme-btn { display: none !important; } }

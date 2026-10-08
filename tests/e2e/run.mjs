@@ -1081,7 +1081,16 @@ for (const [name, vp] of [['смартфон 375×812', { width: 375, height: 81
       const sbw = await page.$eval('#sidebar', (e) => Math.round(e.getBoundingClientRect().width));
       assert(sbw < 80, `колонка узкая (${sbw}px)`);
       assert(!(await page.locator('#nav .nav-label').first().isVisible()), 'подписи скрыты, остались иконки');
-      assert(!(await page.locator('#menuBtn').isVisible()), 'кнопки «Меню» на планшете нет');
+      // кнопка «Меню» раскрывает колонку поверх страницы с подписями; страница при этом не сдвигается
+      assert(await page.locator('#menuBtn').isVisible(), 'на планшете есть кнопка «Меню»');
+      const mainX = await page.$eval('main', (e) => Math.round(e.getBoundingClientRect().left));
+      await page.click('#menuBtn');
+      await page.waitForTimeout(250);
+      assert(await page.locator('#nav .nav-label').first().isVisible(), 'после нажатия видны подписи пунктов');
+      eq(await page.$eval('main', (e) => Math.round(e.getBoundingClientRect().left)), mainX, 'содержимое не сдвинулось');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(250);
+      assert(!(await page.locator('#nav .nav-label').first().isVisible()), 'Esc сворачивает колонку обратно');
       await page.click('#nav a[data-route=students]');
       await page.waitForSelector('h1:has-text("Ученики")');
     } else if (vp.width < 768) {

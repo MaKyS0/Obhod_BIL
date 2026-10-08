@@ -15,8 +15,8 @@
   overflow-y: auto;
   scrollbar-width: thin;
 }
-.brand { display: flex; align-items: center; gap: 10px; height: var(--topbar-h); flex: none; padding: 0 14px; border-bottom: 1px solid var(--side-border); text-decoration: none; color: inherit; }
-.brand-mark { width: 30px; height: 30px; flex: none; }
+.brand { display: flex; align-items: center; gap: 10px; height: var(--topbar-h); flex: none; padding: 0 14px; border-bottom: 1px solid var(--side-border); box-shadow: inset 0 -2px 0 var(--logo-gold); text-decoration: none; color: inherit; }
+.brand-mark { width: 34px; height: 34px; flex: none; }
 .brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 .brand-text strong { font-size: 14px; font-weight: 650; color: var(--text); white-space: nowrap; }
 .brand-text small { color: var(--side-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -26,7 +26,7 @@
 .nav-group { display: flex; flex-direction: column; gap: 1px; }
 .nav-group + .nav-group { margin-top: 10px; }
 .nav-group-end { margin-top: auto !important; padding-top: 6px; border-top: 1px solid var(--side-border); }
-.nav-group-label { padding: 6px 10px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--side-muted); }
+.nav-group-label { padding: 6px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--side-muted); }
 #nav a {
   position: relative; display: flex; align-items: center; gap: 10px; padding: 4px 10px; min-height: 30px;
   color: var(--side-text); text-decoration: none; font-size: 13px; border-radius: var(--radius);
@@ -83,11 +83,14 @@ main { padding: 18px 28px 36px; max-width: 1280px; width: 100%; outline: none; f
 .banners:empty { display: none; }
 .backdrop { position: fixed; inset: 0; background: rgba(15, 25, 38, .45); z-index: 29; }
 .site-foot { padding: 12px 0 18px; color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: space-between; border-top: 1px solid var(--border); margin: 0 28px; }
-.site-foot a { color: var(--text-2); }
+.site-foot a { color: var(--text-2); display: inline-block; padding: 2px 0; }
+@media (pointer: coarse) { .site-foot a { padding: 12px 4px; margin: -8px 0; } .sync-status { height: 40px; } }
 
-/* Планшет: меню сворачивается в колонку иконок (подписи — во всплывающей подсказке и в выезжающем меню по кнопке) */
+/* Планшет: меню — узкая колонка иконок; кнопка «Меню» в шапке раскрывает её поверх страницы с подписями (названия не приходится угадывать).
+   Колонка закреплена, содержимое сдвинуто на её ширину, поэтому раскрытие ничего не перестраивает. */
 @media (min-width: 768px) and (max-width: 1023px) {
-  .sidebar { width: var(--rail-w); flex-basis: var(--rail-w); overflow-x: hidden; }
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; height: auto; z-index: 30; width: var(--rail-w); overflow-x: hidden; }
+  .main-col { margin-left: var(--rail-w); }
   .brand { justify-content: center; padding: 0; }
   .brand-text, .nav-label, .nav-group-label, .nav-n, .sidebar-foot { display: none; }
   #nav { padding: 4px 6px; align-items: stretch; }
@@ -96,9 +99,19 @@ main { padding: 18px 28px 36px; max-width: 1280px; width: 100%; outline: none; f
   #nav a { justify-content: center; padding: 0; min-height: 40px; }
   .nav-count { position: absolute; top: 3px; right: 3px; min-width: 15px; line-height: 15px; font-size: 10px; padding: 0 3px; }
   .topbar { padding: 0 16px; }
+  .topbar .menu-btn { display: inline-flex; }
   main { padding: 18px 20px 36px; }
   .banners { padding: 0 20px; }
   .site-foot { margin: 0 20px; padding: 12px 0 20px; }
+  body.nav-open .sidebar { width: var(--sidebar-w); box-shadow: 8px 0 28px rgba(0,0,0,.2); }
+  body.nav-open .brand { justify-content: flex-start; padding: 0 14px; }
+  body.nav-open .brand-text, body.nav-open .nav-label, body.nav-open .nav-group-label, body.nav-open .nav-n, body.nav-open .sidebar-foot { display: flex; }
+  body.nav-open .nav-label { display: block; }
+  body.nav-open .nav-n { display: inline; }
+  body.nav-open .nav-group-label { display: block; }
+  body.nav-open #nav a { justify-content: flex-start; padding: 4px 10px; }
+  body.nav-open .nav-count { position: static; font-size: 11px; line-height: 18px; padding: 0 5px; }
+  body.nav-open .nav-n:empty, body.nav-open .nav-count:empty { display: none; }
 }
 
 /* Телефон: меню выезжает слева */

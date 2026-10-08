@@ -85,9 +85,9 @@ export function render(ctx) {
         { key: 'birth', label: 'Дата рождения', sortable: true, value: (r) => r.student.birthDate || '', render: (r) => (r.student.birthDate ? formatDate(r.student.birthDate) : '—') },
         { key: 'status', label: 'Статус', render: (r) => studentStatusBadge(r.student, r.enr) },
         { key: 'act', label: 'Действия', actions: true, render: (r) => h('span', null,
-          btn('Изменить', () => openStudentForm(ctx, { student: r.student }), 'sm'),
-          btn('Перевести', () => openMoveStudent(ctx, r.student), 'sm'),
-          btn('Удалить', () => openDeleteStudent(ctx, r.student), 'danger-outline sm')) },
+          btn('Изменить', () => openStudentForm(ctx, { student: r.student }), 'sm', { icon: 'edit' }),
+          btn('Перевести', () => openMoveStudent(ctx, r.student), 'sm', { icon: 'move' }),
+          btn('Удалить', () => openDeleteStudent(ctx, r.student), 'danger-outline sm', { icon: 'trash' })) },
       ],
     }));
   }

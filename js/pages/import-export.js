@@ -1,3 +1,4 @@
+import { filePicker } from '../ui/file-picker.js';
 import { h } from '../ui/dom.js';
 import { pageHead, btn, badge, notice } from '../ui/common.js';
 import { field, radioCard, checkbox } from '../ui/form.js';
@@ -40,6 +41,7 @@ export function render(ctx) {
     radioCard({ name: 'kind', value: 'staff', title: 'Персонал', text: 'ФИО, должность (классный руководитель / воспитатель), класс', onChange: () => reparse() }),
   ];
   const fileInput = h('input', { type: 'file', accept: '.csv,.tsv,.txt,.json,text/csv,application/json', id: 'importFile', 'aria-label': 'Файл для импорта', onchange: onFile });
+  const importPicker = filePicker(fileInput);
   const paste = h('textarea', { id: 'importText', rows: 5, placeholder: 'Или вставьте сюда таблицу из Excel / Google Таблиц (с заголовком в первой строке) либо JSON', 'aria-label': 'Текст для импорта' });
   const parseBtn = btn('Разобрать данные', () => { source = paste.value; reparse(); }, 'primary', { id: 'importParse' });
   const out = h('div', { id: 'importOut', style: 'margin-top:16px' });
@@ -182,7 +184,7 @@ export function render(ctx) {
           let n = 0;
           for (const { plan } of list) if (plan.summary.create + plan.summary.update) n += await repo.applyImport(plan);
           toast(`Импорт завершён: обработано записей — ${n}`);
-          source = ''; csv = null; paste.value = ''; fileInput.value = ''; out.replaceChildren();
+          source = ''; csv = null; paste.value = ''; fileInput.value = ''; importPicker.sync(); out.replaceChildren();
           out.append(notice('info', `Готово. Перейдите в раздел `, h('a', { href: '#/students' }, 'Ученики'), ' или ', h('a', { href: '#/staff' }, 'Персонал'), '.'));
         } catch (e) { toastError(e); }
       }, 'primary', { disabled: !canApply, id: 'importApply' }),
@@ -192,7 +194,7 @@ export function render(ctx) {
   el.append(h('div', { class: 'card', style: 'margin-top:16px' }, h('h2', null, 'Импортировать данные'),
     h('p', { class: 'muted' }, 'Поддерживаются CSV (в том числе сохранённый из Excel; кодировки UTF-8 и Windows-1251, разделители «;», «,», табуляция), а также JSON. Excel-файл (.xlsx) сначала сохраните как «CSV».'),
     h('div', { class: 'field' }, h('div', { class: 'label' }, 'Что импортируем'), h('div', { class: 'radio-grid' }, kindR.map((x) => x.el))),
-    h('div', { class: 'field' }, h('label', { for: 'importFile' }, 'Файл'), fileInput),
+    h('div', { class: 'field' }, h('label', { for: 'importFile' }, 'Файл'), importPicker.el),
     h('div', { class: 'field' }, h('label', { for: 'importText' }, 'Или вставьте данные'), paste), parseBtn,
     h('div', { class: 'notice info', style: 'margin-top:12px' }, h('strong', null, 'Зашифрованные данные лицея. '), 'Файл ', h('code', null, 'data/lyceum-data.enc.json'), ' (или такой же файл, выбранный выше) расшифровывается паролем в вашем браузере и проходит обычный предпросмотр импорта. ', btn('Загрузить зашифрованные данные лицея', loadFromRepo, 'sm', { id: 'loadEncBtn' })),
     h('div', { class: 'row', style: 'margin-top:12px' }, btn('Шаблон CSV: ученики', () => downloadText('шаблон-ученики.csv', STUDENT_TEMPLATE, 'text/csv;charset=utf-8'), 'sm'), btn('Шаблон CSV: персонал', () => downloadText('шаблон-персонал.csv', STAFF_TEMPLATE, 'text/csv;charset=utf-8'), 'sm')),

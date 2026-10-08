@@ -72,6 +72,15 @@ a.stat:focus-visible { outline-offset: -2px; }
 .rm-top b { color: var(--text); font-weight: 600; }
 .rm-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .rm-cell { min-width: 0; }
+.rm-list { padding-top: 10px; border-top: 1px solid var(--border); }
+.rm-list-title { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+.rm-list ul { list-style: none; margin: 0 0 4px; padding: 0; }
+.rm-list li { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; font-size: 13px; }
+.rm-list .who { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.rm-list .meta { flex: none; }
+.rm-list .why { color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
+.rm-list .chips { align-items: center; }
+.rm-list .chip a, .rm-list a.chip { text-decoration: none; }
 .rm-cell b { display: block; font-size: 16px; font-weight: 600; line-height: 1.25; }
 .rm-cell span { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
 .rm-cell span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); flex: none; }
@@ -177,7 +186,7 @@ details.class-block .inner { padding: 4px 14px 12px; }
 /* ---------- Вечерний обход (сначала телефон) ---------- */
 .round-summary { display: grid; gap: 10px; margin-bottom: 12px; padding: 12px 14px; }
 .round-progress { height: 8px; background: var(--surface-3); border-radius: 4px; overflow: hidden; }
-.round-progress > i { display: block; height: 100%; background: var(--success); border-radius: 4px; }
+.round-progress > i { display: block; width: 100%; height: 100%; background: var(--success); border-radius: 4px; transform-origin: left center; transform: scaleX(0); }
 .round-counts { display: flex; flex-wrap: wrap; gap: 6px; }
 .rc { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 3px; font-size: 13px; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
 .rc b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -189,7 +198,7 @@ details.class-block .inner { padding: 4px 14px 12px; }
 .round-date input { min-width: 150px; }
 .round-only { min-height: 32px; margin: 0; align-items: center; }
 .round-list { display: grid; gap: 8px; }
-.round-class { border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-3); overflow: hidden; }
+.round-class { border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-3); overflow: clip; } /* clip, не hidden: иначе «Всем неотмеченным» не липнет к нижнему краю */
 .round-class[data-done="true"] { border-color: var(--success-line); background: var(--success-weak); }
 .round-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; padding: 8px 14px; border: 0; background: transparent; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .round-class-name { font-size: 19px; font-weight: 650; min-width: 3.2ch; display: inline-flex; align-items: center; gap: 6px; }
@@ -198,8 +207,8 @@ details.class-block .inner { padding: 4px 14px 12px; }
 .round-class[data-done="true"] .round-class-name, .round-class[data-done="true"] .round-class-count { color: var(--success); }
 .round-chevron { display: inline-grid; color: var(--muted); }
 .round-body { background: var(--surface); padding: 2px 12px 10px; border-top: 1px solid var(--border); }
-.round-bulk { padding: 10px 0 4px; }
-.round-bulk .btn { width: 100%; min-height: 40px; }
+.round-bulk { position: sticky; bottom: 0; z-index: 2; margin: 0 -12px -10px; padding: 10px 12px; background: var(--surface); border-top: 1px solid var(--border); }
+.round-bulk .btn { width: 100%; min-height: 48px; }
 .round-row { padding: 11px 0; border-bottom: 1px solid var(--border); }
 .round-row:last-child { border-bottom: 0; }
 .round-name { display: block; font-size: 16px; font-weight: 600; line-height: 1.3; margin-bottom: 9px; overflow-wrap: anywhere; }
@@ -216,6 +225,7 @@ details.class-block .inner { padding: 4px 14px 12px; }
 .round-alldone h2 { color: var(--success); border: 0; padding: 0; }
 .round-reason { display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 8px; min-height: 40px; padding: 6px 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius); background: transparent; color: var(--primary); font-size: 14px; text-align: left; cursor: pointer; touch-action: manipulation; overflow-wrap: anywhere; }
 .round-reason:hover { background: var(--primary-weak); }
+.round-row[data-place="sleeping"] .round-reason:not(.has) { width: auto; min-height: 32px; margin-top: 4px; padding: 2px 6px; border-color: transparent; font-size: 13px; }
 .round-reason.has { border-style: solid; border-color: var(--border); background: var(--surface-2); color: var(--text); }
 .rr-label { color: var(--muted); }
 .reason-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
