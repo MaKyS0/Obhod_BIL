@@ -45,7 +45,7 @@ export function render(ctx) {
   el.append(pageHead({
     title: 'Главная',
     sub: `${longDate()} · ${s.settings.lyceumName}`,
-    actions: [link('Вечерний обход', '#/rounds', 'primary', { icon: 'moon' }), link('Начать новый учебный год', '#/new-year', '', { icon: 'calendar-next' })],
+    actions: [link('Вечерний обход', '#/rounds', 'primary', { icon: 'moon' })],
   }));
 
   if (!v.total && !v.unassigned.length) {
