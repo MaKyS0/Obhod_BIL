@@ -53,13 +53,14 @@ export function render(ctx) {
     });
     return f.el;
   };
-  const notes = field({ label: 'Дополнительные данные', name: 'notes', type: 'textarea', value: cls.notes, hint: 'Например: профиль, кабинет, особенности класса' });
+  const room = field({ label: 'Кабинет', name: 'room', value: cls.room || '', hint: 'Показывается в обходе рядом с классом, например 230', attrs: { maxlength: 20 } });
+  const notes = field({ label: 'Дополнительные данные', name: 'notes', type: 'textarea', value: cls.notes, hint: 'Например: профиль, особенности класса' });
   el.append(h('div', { class: 'grid-2 no-print' },
     h('div', { class: 'card panel' }, h('h2', null, 'Руководство класса'), staffSelect('teacher'), staffSelect('tutor'), s.staff.length ? null : h('p', { class: 'muted' }, 'Сначала добавьте сотрудников в разделе «Персонал».'), h('a', { href: '#/staff' }, 'Перейти в раздел «Персонал»')),
     h('div', { class: 'card panel' }, h('h2', null, 'О классе'),
       h('dl', { class: 'kv', style: 'margin-bottom:12px' }, h('dt', null, 'Учебный год'), h('dd', null, yearLabel(cls.yearId)), h('dt', null, 'Учеников'), h('dd', null, String(c.count))),
-      notes.el,
-      h('div', { class: 'row' }, btn('Сохранить', async () => { try { await repo.updateClassNotes(cls.id, notes.get()); toast('Сохранено'); } catch (e) { toastError(e); } }, 'sm'),
+      room.el, notes.el,
+      h('div', { class: 'row' }, btn('Сохранить', async () => { try { await repo.updateClass(cls.id, { notes: notes.get(), room: room.get() }); toast('Сохранено'); } catch (e) { toastError(e); } }, 'sm'),
         btn('Архивировать класс', async () => {
           const ok = await confirmAction({ title: 'Архивировать класс', message: c.count ? `В классе ${cls.name} есть ученики (${c.count}). Сначала переведите их в другие классы.` : `Класс ${cls.name} будет скрыт из списков текущего года (данные истории сохранятся). Назначенные руководители будут сняты.`, confirmLabel: 'Архивировать', kind: c.count ? 'primary' : 'danger' });
           if (!ok || c.count) return;

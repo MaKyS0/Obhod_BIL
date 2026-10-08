@@ -21,11 +21,15 @@ async function world() {
   assert.equal(post({ type: 'live', action: 'seed', token, data: exportData(env.S()) }).ok, true);
   const dev = 'v'.repeat(32);
   post({ type: 'access', action: 'request', deviceHash: sha(dev), name: 'Посетитель', note: '' });
-  post({ type: 'access', action: 'decide', token, id: sha(dev).slice(0, 12), decision: 'allow' });
+  post({ type: 'access', action: 'decide', token, id: sha(dev).slice(0, 12), decision: 'allow', role: 'admin' }); // устройство-администратор
+  const udev = 'u'.repeat(32);
+  post({ type: 'access', action: 'request', deviceHash: sha(udev), name: 'Дежурный', note: '' });
+  post({ type: 'access', action: 'decide', token, id: sha(udev).slice(0, 12), decision: 'allow' }); // обычный пользователь
   const state = () => JSON.parse(call(sb, 'doGet', { parameter: { action: 'backup', token } }).backup);
   const visitor = (batches) => post({ type: 'live', action: 'push', device: dev, baseRev: 1, batches });
   const owner = (batches) => post({ type: 'live', action: 'push', token, baseRev: 1, batches });
-  return { sb, token, post, env, state, visitor, owner, dev };
+  const user = (batches) => post({ type: 'live', action: 'push', device: udev, baseRev: 1, batches });
+  return { sb, token, post, env, state, visitor, owner, user, dev, udev };
 }
 
 test('аудит: аноним ничего не читает и не пишет (без токена и без допуска)', async () => {
@@ -48,7 +52,7 @@ test('аудит: аноним ничего не читает и не пишет
   assert.equal(w.state().students.length, 30);
 });
 
-test('аудит: допущенный посетитель не может очистить или массово удалить базу, владелец может', async () => {
+test('аудит: устройство-администратор не может очистить или массово удалить базу, владелец может', async () => {
   const w = await world();
   const clear = w.visitor([{ put: {}, del: {}, clear: ['students', 'enrollments'], settings: {} }]);
   assert.equal(clear.rejected, 1);
@@ -81,7 +85,9 @@ test('аудит: записи обхода проверяются строго 
   assert.equal(bad({ id: 'a', date: today, studentId: 's', place: '__proto__' }), 1);
   assert.equal(bad({ id: 'a', date: today, studentId: 's', place: 'home', reason: 'я'.repeat(500) }), 1);
   assert.equal(bad({ id: 'a', date: today, studentId: 5, place: 'home' }), 1);
-  assert.equal(w.visitor([{ put: { rounds: [{ id: `${today}:s`, date: today, studentId: 's', place: 'home', reason: 'ок' }] }, del: {}, clear: [], settings: {} }]).applied, 1);
+  const real = w.state().students[0].id;
+  assert.equal(w.visitor([{ put: { rounds: [{ id: `${today}:${real}`, date: today, studentId: real, place: 'home', reason: 'ок' }] }, del: {}, clear: [], settings: {} }]).applied, 1);
+  assert.equal(w.visitor([{ put: { rounds: [{ id: `${today}:нет-такого`, date: today, studentId: 'нет-такого', place: 'home' }] }, del: {}, clear: [], settings: {} }]).rejected, 1, 'отметка несуществующего ученика отклонена');
   w.visitor([{ put: { students: [{ id: '__proto__', lastName: 'x' }] }, del: { students: ['constructor'] }, clear: [], settings: JSON.parse('{"__proto__":{"polluted":1}}') }]);
   assert.equal(({}).polluted, undefined);
   // клиент тоже игнорирует чужую запись с неизвестным местом

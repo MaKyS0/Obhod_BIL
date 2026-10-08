@@ -71,7 +71,7 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 .card > h2, .card > .card-head { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-height: 28px; }
 .card-head h2 { margin: 0; }
-.panel, .card.flush, .card.big-action, .card.danger-zone, .card.round-summary, .card.round-controls, .card.round-alldone, .card.panel {
+.panel, .card.flush, .card.big-action, .card.danger-zone, .card.round-alldone, .card.panel {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
 }
 .panel { padding: 14px 16px; }

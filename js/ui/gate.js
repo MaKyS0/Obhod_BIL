@@ -8,9 +8,10 @@ import { requestAccess, accessStatus, verifyOwner } from '../services/access.js'
 // Запоминаем, что это устройство уже допущено: при следующих открытиях сайт показывается сразу (данные уже на устройстве),
 // а доступ перепроверяется в фоне — раньше каждое открытие ждало ответа скрипта Google (от 4 до 30 секунд).
 const ROLE_KEY = 'lyceum-role';
-export function knownRole() { try { const r = localStorage.getItem(ROLE_KEY); return r === 'owner' || r === 'visitor' ? r : null; } catch { return null; } }
+// Роль: 'admin' (владелец по токену или устройство-администратор) | 'user' (дежурный). Прежние значения owner/visitor читаются как admin/user.
+export function knownRole() { try { const r = localStorage.getItem(ROLE_KEY); return r === 'admin' || r === 'owner' ? 'admin' : r === 'user' || r === 'visitor' ? 'user' : null; } catch { return null; } }
 export function rememberRole(role) { try { localStorage.setItem(ROLE_KEY, role); } catch { /* хранилище недоступно — будет обычная проверка */ } }
-export function forgetRole() { try { localStorage.removeItem(ROLE_KEY); } catch { /* ignore */ } }
+export function forgetRole() { try { localStorage.removeItem(ROLE_KEY); localStorage.removeItem('lyceum-name'); } catch { /* ignore */ } }
 
 const pollMs = () => (typeof globalThis.__LYCEUM_POLL_MS__ === 'number' ? globalThis.__LYCEUM_POLL_MS__ : 8000);
 
@@ -32,7 +33,7 @@ export function runGate({ endpoint, store, repo, db, view, onShown }) {
       if (!r.ok) throw new Error('Неверный токен владельца');
       const s = store.state.settings;
       await repo.updateSettings({ sheetsToken: token, ...(s.sheetsUrl ? {} : { sheetsUrl: endpoint }) });
-      finish('owner');
+      finish('admin');
     }
 
     function ownerLink() {
@@ -51,10 +52,12 @@ export function runGate({ endpoint, store, repo, db, view, onShown }) {
 
     function showRequestForm(err = '') {
       const name = field({ label: 'Имя и фамилия', name: 'visitorName', required: true, attrs: { maxlength: 80 } });
+      const email = field({ label: 'Email (необязательно)', name: 'visitorEmail', type: 'email', autocomplete: 'email', attrs: { maxlength: 120 }, hint: 'Администратор увидит его вместе с запросом.' });
+      const role = field({ label: 'Какой доступ нужен', name: 'visitorRole', options: [{ value: 'user', label: 'Дежурный: проводит обход' }, { value: 'admin', label: 'Администратор: смотрит итоги, журнал, выгрузки' }], value: 'user' });
       const note = field({ label: 'Кто вы и зачем нужен доступ', name: 'visitorNote', type: 'textarea', attrs: { maxlength: 300 }, hint: 'Например: классный руководитель 9А. Необязательно.', rows: 3 });
       show(
         h('h1', null, 'Вход по разрешению'),
-        h('p', null, 'Сайт содержит данные учеников. Чтобы войти, отправьте запрос владельцу — он сам решит, пускать ли вас.'),
+        h('p', null, 'Сайт содержит данные учеников. Чтобы войти, отправьте запрос администратору — он сам решит, пускать ли вас и в какой роли.'),
         err ? h('div', { class: 'notice danger' }, err) : null,
         h('form', { onsubmit: async (e) => {
           e.preventDefault();
@@ -62,14 +65,15 @@ export function runGate({ endpoint, store, repo, db, view, onShown }) {
           const submit = e.target.querySelector('button[type=submit]');
           submit.disabled = true;
           try {
-            const r = await requestAccess(endpoint, name.get(), note.get());
-            route(r.status);
+            const r = await requestAccess(endpoint, name.get(), note.get(), { email: email.get().trim(), wantRole: role.get() });
+            route(r.status, r.role);
           } catch (e2) {
             if (e2.code === 'name-required') name.error(e2.message);
+            else if (e2.code === 'bad-email') email.error(e2.message);
             else toastError(e2);
           } finally { submit.disabled = false; }
-        } }, name.el, note.el, h('button', { type: 'submit', class: 'btn btn-primary', id: 'requestAccessBtn' }, 'Отправить запрос')),
-        h('p', { class: 'muted' }, 'Владелец увидит только имя и сообщение, которые вы здесь введёте.'),
+        } }, name.el, email.el, role.el, note.el, h('button', { type: 'submit', class: 'btn btn-primary', id: 'requestAccessBtn' }, 'Отправить запрос')),
+        h('p', { class: 'muted' }, 'Администратор увидит только имя, почту и сообщение, которые вы здесь введёте.'),
         ownerLink(),
       );
     }
@@ -98,8 +102,8 @@ export function runGate({ endpoint, store, repo, db, view, onShown }) {
       );
     }
 
-    function route(status) {
-      if (status === 'allowed') return finish('visitor');
+    function route(status, role) {
+      if (status === 'allowed') return finish(role === 'admin' ? 'admin' : 'user');
       if (status === 'pending') return showPending();
       if (status === 'denied' || status === 'revoked') return showClosed(status);
       return showRequestForm();
@@ -107,7 +111,7 @@ export function runGate({ endpoint, store, repo, db, view, onShown }) {
 
     async function poll(manual) {
       try {
-        route((await accessStatus(endpoint)).status);
+        { const st = await accessStatus(endpoint); route(st.status, st.role); }
       } catch (e) {
         if (manual) toastError(e);
         const el = document.getElementById('gateStatus');
@@ -138,7 +142,7 @@ export function runGate({ endpoint, store, repo, db, view, onShown }) {
             if (e.code !== 'auth') throw e; // сохранённый токен не подошёл — дальше обычный путь посетителя
           }
         }
-        route((await accessStatus(endpoint)).status);
+        { const st = await accessStatus(endpoint); route(st.status, st.role); }
       } catch (e) {
         showOffline(e.message);
       }

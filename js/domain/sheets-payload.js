@@ -10,6 +10,8 @@ import { cmp } from './collate.js';
 import { roundView, ROUND_LABEL } from './rounds.js';
 import { todayISO } from './dates.js';
 
+const timeText = (iso) => { const d = new Date(iso); return iso && !Number.isNaN(d.getTime()) ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : ''; };
+
 export const SHEET_NAMES = ['Ученики', 'Классы', 'Учителя', 'Воспитатели', 'Отчёт', 'Архив', 'История', 'Вечерний обход'];
 
 // Значение, начинающееся с = + - @, превращается в текст (защита от формул).
@@ -64,7 +66,7 @@ export function buildSheetsPayload(state, { includeBackup = true, now = new Date
   // Вечерний обход: самая свежая дата, по которой есть отметки (иначе сегодняшняя).
   const roundDate = state.rounds && state.rounds.length ? state.rounds.reduce((m, r) => (r.date > m ? r.date : m), '') : todayISO();
   const round = [];
-  for (const g of roundView(state, roundDate).groups) for (const x of g.students) round.push([formatDate(roundDate), g.name, fullName(x.student), x.place ? ROUND_LABEL[x.place] : 'не отмечен', x.reason || '']);
+  for (const g of roundView(state, roundDate).groups) for (const x of g.students) round.push([formatDate(roundDate), x.place ? timeText(x.at) : '', g.name, fullName(x.student), x.place ? ROUND_LABEL[x.place] : 'не отмечен', x.reason || '', x.place ? x.by : '']);
 
   const sheets = {
     'Ученики': { header: ['ID', 'Фамилия', 'Имя', 'Отчество', 'ФИО', 'Дата рождения', 'Класс', 'Параллель', 'Статус', 'Учебный год', 'Примечание'], rows: rowsSafe(students) },
@@ -74,7 +76,7 @@ export function buildSheetsPayload(state, { includeBackup = true, now = new Date
     'Отчёт': { header: ['Показатель', 'Значение'], rows: rowsSafe(report) },
     'Архив': { header: ['ID', 'ФИО', 'Дата рождения', 'Статус', 'Год выпуска / дата выбытия', 'Последний класс'], rows: rowsSafe(archive) },
     'История': { header: ['Учебный год', 'Класс', 'Учеников', ROLE_LABEL.teacher, ROLE_LABEL.tutor], rows: rowsSafe(history) },
-    'Вечерний обход': { header: ['Дата', 'Класс', 'Ученик', 'Где', 'Причина'], rows: rowsSafe(round) },
+    'Вечерний обход': { header: ['Дата', 'Время', 'Класс', 'Ученик', 'Где', 'Причина', 'Ответственный'], rows: rowsSafe(round) },
   };
 
   return {

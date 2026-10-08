@@ -47,11 +47,14 @@
   html[data-theme="dark"] ::-webkit-scrollbar { width: 12px; height: 12px; }
   html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; border: 3px solid var(--bg); }
   html[data-theme="dark"] ::-webkit-scrollbar-track { background: transparent; }
-  html[data-theme="dark"] .btn-primary, html[data-theme="dark"] .reason-chip.on, html[data-theme="dark"] .rp-sleeping[aria-pressed="true"], html[data-theme="dark"] .nav-count { background: #2f6fb3; border-color: #2f6fb3; color: #fff; }
+  html[data-theme="dark"] .btn-primary, html[data-theme="dark"] .reason-chip.on, html[data-theme="dark"] .nav-count { background: #2f6fb3; border-color: #2f6fb3; color: #fff; }
   html[data-theme="dark"] .btn-primary:hover { background: #3a80c9; border-color: #3a80c9; }
   html[data-theme="dark"] .btn-danger, html[data-theme="dark"] .rp-sick[aria-pressed="true"] { background: #b73a31; border-color: #b73a31; color: #fff; }
   html[data-theme="dark"] .btn-danger:hover { background: #cc4a40; border-color: #cc4a40; }
-  html[data-theme="dark"] .rp-home[aria-pressed="true"] { background: #b86d0a; }
+  html[data-theme="dark"] .rp-home[aria-pressed="true"] { background: #a86100; }
+  html[data-theme="dark"] .rp-sleeping[aria-pressed="true"] { background: #2c7f32; }
+  html[data-theme="dark"] .rp-absent[aria-pressed="true"] { background: #a8302a; }
+  html[data-theme="dark"] .seg button[aria-pressed="true"] { background: var(--primary-weak); }
   html[data-theme="dark"] input, html[data-theme="dark"] select, html[data-theme="dark"] textarea { background: #101a24; }
   html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color: #8191a6; }
   html[data-theme="dark"] .skip-link, html[data-theme="dark"] .skip-link:hover { color: #0b1016; }

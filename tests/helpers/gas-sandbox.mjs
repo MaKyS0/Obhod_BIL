@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const CODE = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../google-apps-script/Code.gs'), 'utf8');
 
-export function makeSandbox({ now = () => Date.now() } = {}) {
+export function makeSandbox({ now = () => Date.now(), timeZone = 'Asia/Aqtobe' } = {}) {
   const props = {};
   const cache = {};
   const sheets = new Map();
@@ -53,7 +53,17 @@ export function makeSandbox({ now = () => Date.now() } = {}) {
       sh.cells = next;
       sh.lastRow--;
     };
-    sh.deleteRows = () => {};
+    sh.deleteRows = (start, n) => {
+      const next = {};
+      for (const [k, v] of Object.entries(sh.cells)) {
+        const [r, c] = k.split(',').map(Number);
+        if (r < start) next[k] = v;
+        else if (r >= start + n) next[`${r - n},${c}`] = v;
+      }
+      sh.cells = next;
+      sh.lastRow = Math.max(0, sh.lastRow - Math.min(n, Math.max(0, sh.lastRow - start + 1)));
+    };
+    sh.getMaxRows = () => 1000000;
     return sh;
   };
 
@@ -66,6 +76,12 @@ export function makeSandbox({ now = () => Date.now() } = {}) {
       getUuid: () => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       DigestAlgorithm: { SHA_256: 'sha256' },
       Charset: { UTF_8: 'utf8' },
+      formatDate: (d, tz, fmt) => {
+        const off = { 'Asia/Aqtobe': 5, 'Asia/Qostanay': 5, 'Europe/Moscow': 3, UTC: 0 }[tz] ?? 0;
+        const t = new globalThis.Date(d.getTime() + off * 3600000);
+        const p = (n) => String(n).padStart(2, '0');
+        return fmt.replace('yyyy', t.getUTCFullYear()).replace('MM', p(t.getUTCMonth() + 1)).replace('dd', p(t.getUTCDate())).replace('HH', p(t.getUTCHours())).replace('mm', p(t.getUTCMinutes()));
+      },
       computeDigest: (alg, text) => [...crypto.createHash('sha256').update(String(text), 'utf8').digest()].map((b) => (b > 127 ? b - 256 : b)),
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); } }) },
@@ -75,7 +91,7 @@ export function makeSandbox({ now = () => Date.now() } = {}) {
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ text: t, setMimeType() { return this; }, getContent: () => t }) },
     ScriptApp: { getProjectTriggers: () => triggers, deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1), newTrigger: (fn) => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create: () => triggers.push({ getHandlerFunction: () => fn }) }) }) }) }) },
     MailApp: { sendEmail: (...a) => mails.push(a) },
-    Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.com' }) },
+    Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.com' }), getScriptTimeZone: () => timeZone },
   };
   vm.createContext(sandbox);
   vm.runInContext(CODE, sandbox);

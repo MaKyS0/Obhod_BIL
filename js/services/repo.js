@@ -9,7 +9,8 @@ import { validateBackup, exportData } from '../domain/backup.js';
 import { planPromotion, planUndo, planFinalizeGraduation } from '../domain/promotion.js';
 import { planStudentImport, planStaffImport, parseJsonImport } from '../domain/importer.js';
 import { defaultSettings } from '../domain/state.js';
-import { isPlace, roundId, earliestRoundDate, cleanReason } from '../domain/rounds.js';
+import { normalizeDay } from '../domain/calendar.js';
+import { isPlace, isKind, roundId, kindOf, earliestRoundDate, cleanReason } from '../domain/rounds.js';
 
 export class UserError extends Error {
   constructor(message, code = 'USER') {
@@ -255,6 +256,29 @@ export function createRepo(store) {
       await store.commit({ put: { classes: [{ ...c, notes: trim(notes), updatedAt: nowISO() }] }, del: {} });
     },
 
+    // Заметки и кабинет класса. Кабинет (например, «230») показывается в обходе рядом с классом.
+    async updateClass(id, { notes, room }) {
+      const c = currentClass(id);
+      const next = { ...c, updatedAt: nowISO() };
+      if (notes !== undefined) next.notes = trim(notes);
+      if (room !== undefined) {
+        const r = trim(room);
+        if (r.length > 20) throw new UserError('Кабинет — не длиннее 20 знаков');
+        if (r) next.room = r; else delete next.room;
+      }
+      await store.commit({ put: { classes: [next] }, del: {} });
+    },
+
+    // ---------- календарь: выходные дни и дежурные ----------
+    // patch: { holiday, note, dutyStaffIds, dutyText }; пустой день удаляется. Служебная запись (экран обновляется сам).
+    async setDay(date, patch) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new UserError('Неверная дата');
+      const prev = (S().days || []).find((d) => d.id === date) || null;
+      const rec = normalizeDay(date, patch, prev);
+      if (rec) await store.commit({ put: { days: [{ ...rec, updatedAt: nowISO() }] }, del: {} }, { system: true });
+      else if (prev) await store.commit({ put: {}, del: { days: [date] } }, { system: true });
+    },
+
     // ---------- переход на новый год ----------
     previewPromotion(options) {
       return planPromotion(S(), options);
@@ -318,25 +342,30 @@ export function createRepo(store) {
     // ---------- вечерний обход ----------
     // Отметка «где ученик вечером» на дату; place = null снимает отметку. Старые отметки (старше ROUND_KEEP_DAYS) удаляются заодно.
     // Запись служебная (system): страница обхода обновляется сама, остальные экраны не перерисовываются.
-    async setRound(studentId, date, place) {
-      return api.setRounds([studentId], date, place);
+    async setRound(studentId, date, place, opts) {
+      return api.setRounds([studentId], date, place, opts);
     },
 
-    async setRounds(studentIds, date, place) {
+    // kind — вид проверки: 'evening' (по умолчанию), 'morning', 'extra'. Время отметки (at) ставит устройство, ответственного (by) — сервер.
+    async setRounds(studentIds, date, place, { kind = 'evening', by = '' } = {}) {
       if (place !== null && !isPlace(place)) throw new UserError('Неизвестное место ученика');
+      if (!isKind(kind)) throw new UserError('Неизвестный вид проверки');
       const today = todayISO();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today || date < earliestRoundDate(today)) throw new UserError('Отметить можно только сегодняшний обход и два предыдущих дня');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today || date < earliestRoundDate(today, kind)) throw new UserError('Отметить можно только сегодняшний обход и два предыдущих дня');
       const idx = getIndex(S());
       const changes = emptyChanges();
       let n = 0;
       for (const sid of studentIds) {
         const st = idx.students.get(sid);
         if (!st) throw new UserError('Ученик не найден');
-        const id = roundId(date, sid);
+        const id = roundId(date, sid, kind);
         if (place) {
           const enr = enrollmentOf(sid);
           const prev = S().rounds.find((r) => r.id === id);
-          const rec = { id, date, studentId: sid, classId: enr ? enr.classId : null, place, updatedAt: nowISO() };
+          const now = nowISO();
+          const rec = { id, date, studentId: sid, classId: enr ? enr.classId : null, place, at: now, updatedAt: now };
+          if (kind !== 'evening') rec.kind = kind;
+          if (by) rec.by = String(by).slice(0, 80); // только для показа до ответа сервера: настоящее имя ставит сервер
           if (prev && prev.place === place && prev.reason) rec.reason = prev.reason; // то же место — причина остаётся; другое место — причина сбрасывается
           addPut(changes, 'rounds', rec);
           n++;
@@ -345,16 +374,16 @@ export function createRepo(store) {
           n++;
         }
       }
-      const cutoff = earliestRoundDate(today);
-      for (const r of S().rounds) if (r.date < cutoff) addDel(changes, 'rounds', r.id);
+      // Старые отметки чистит сервер (общая база); локально — только без общей базы, иначе удалений набегает больше лимита пользователя.
+      if (!store.live) for (const r of S().rounds) if (r.date < earliestRoundDate(today, kindOf(r))) addDel(changes, 'rounds', r.id);
       if (!n && !(changes.del.rounds || []).length) return 0;
       await store.commit(changes, { system: true });
       return n;
     },
 
     // Причина к отметке обхода (например, «Температура»). Пустая строка убирает причину. Сначала нужно отметить место.
-    async setRoundReason(studentId, date, reason) {
-      const rec = S().rounds.find((r) => r.id === roundId(date, studentId));
+    async setRoundReason(studentId, date, reason, { kind = 'evening' } = {}) {
+      const rec = S().rounds.find((r) => r.id === roundId(date, studentId, kind));
       if (!rec) throw new UserError('Сначала отметьте, где ученик, — потом можно указать причину');
       const text = cleanReason(reason);
       const next = { ...rec, updatedAt: nowISO() };

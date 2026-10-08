@@ -12,8 +12,8 @@ import { createLive } from '../../js/services/live.js';
 
 const today = todayISO();
 
-test('обход: три места, класс «готов» только когда отмечены все', async () => {
-  assert.deepEqual(ROUND_PLACES.map((p) => p.label), ['Болеет', 'С дома', 'Ночует']);
+test('обход: четыре места, класс «готов» только когда отмечены все', async () => {
+  assert.deepEqual(ROUND_PLACES.map((p) => p.label), ['Болеет', 'С дома', 'Отсутствует', 'Ночует']);
   const env = await makeEnv();
   await seed(env, 2);
   let v = roundView(env.S(), today);
@@ -29,7 +29,7 @@ test('обход: три места, класс «готов» только ко
   v = roundView(env.S(), today);
   assert.equal(v.groups[0].done, true, 'отмечены все — класс зелёный');
   assert.equal(v.doneClasses, 1);
-  assert.deepEqual(v.totals.byPlace, { sick: 1, home: 0, sleeping: 1 });
+  assert.deepEqual(v.totals.byPlace, { sick: 1, home: 0, absent: 0, sleeping: 1 });
   // повторное нажатие на то же место снимает отметку
   await env.repo.setRound(g.students[1].student.id, today, null);
   assert.equal(roundView(env.S(), today).groups[0].done, false);
@@ -90,10 +90,10 @@ test('обход: лист «Вечерний обход» в таблице —
   const g = roundView(env.S(), today).groups[0];
   await env.repo.setRound(g.students[0].student.id, today, 'sick');
   const sheet = buildSheetsPayload(env.S()).sheets['Вечерний обход'];
-  assert.deepEqual(sheet.header, ['Дата', 'Класс', 'Ученик', 'Где', 'Причина']);
+  assert.deepEqual(sheet.header, ['Дата', 'Время', 'Класс', 'Ученик', 'Где', 'Причина', 'Ответственный']);
   assert.equal(sheet.rows.length, 30);
-  assert.equal(sheet.rows.filter((r) => r[3] === 'Болеет').length, 1);
-  assert.equal(sheet.rows.filter((r) => r[3] === 'не отмечен').length, 29);
+  assert.equal(sheet.rows.filter((r) => r[4] === 'Болеет').length, 1);
+  assert.equal(sheet.rows.filter((r) => r[4] === 'не отмечен').length, 29);
 });
 
 test('обход + общая база: отметка одного видна другому; сервер принимает раздел «rounds»', async () => {
@@ -112,7 +112,7 @@ test('обход + общая база: отметка одного видна �
   await a.live.tick();
   const hash = (await import('node:crypto')).createHash('sha256').update('b'.repeat(32)).digest('hex');
   callGas(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action: 'request', deviceHash: hash, name: 'Воспитатель', note: '' }) } });
-  callGas(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action: 'decide', token, id: hash.slice(0, 12), decision: 'allow' }) } });
+  callGas(sb, 'doPost', { postData: { contents: JSON.stringify({ type: 'access', action: 'decide', token, id: hash.slice(0, 12), decision: 'allow', role: 'admin' }) } });
   const b = await mk('', 'b'.repeat(32));
   await b.live.tick();
   assert.equal(b.S().students.length, 30);
@@ -171,7 +171,7 @@ test('обход: причина к отметке — задать, замен�
   // лист таблицы
   await env.repo.setRoundReason(sid, today, 'Выходной');
   const sheet = buildSheetsPayload(env.S()).sheets['Вечерний обход'];
-  assert.equal(sheet.rows.find((r) => r[3] === 'С дома')[4], 'Выходной');
+  assert.equal(sheet.rows.find((r) => r[4] === 'С дома')[5], 'Выходной');
 });
 
 test('главная: «последние изменения» собираются из меток времени и склеивают серии (импорт — одна строка)', async () => {
@@ -187,4 +187,25 @@ test('главная: «последние изменения» собирают
   await env.repo.setRound(sid, today, 'sick');
   const after = recentChanges(env.S(), 10);
   assert.ok(after.some((c) => /Вечерний обход/.test(c.title) && /отметок: 1/.test(c.detail)));
+});
+
+test('календарь и классы: выходной день, дежурные, кабинет класса; пустой день удаляется; обход знает кабинет и воспитателя', async () => {
+  const { dayInfo, normalizeDay } = await import('../../js/domain/calendar.js');
+  const env = await makeEnv();
+  await seed(env, 2);
+  const staff = env.S().staff;
+  await env.repo.setDay(today, { holiday: true, note: 'Праздник', dutyStaffIds: [staff[0].id, staff[0].id, 'нет'], dutyText: '  Охрана  ' });
+  let d = dayInfo(env.S(), today);
+  assert.equal(d.holiday, true);
+  assert.equal(d.duty.length, 1, 'дубликаты и неизвестные сотрудники не попадают в дежурные');
+  assert.ok(d.dutyLabel.includes('Охрана'));
+  await env.repo.setDay(today, { holiday: false, note: '', dutyStaffIds: [], dutyText: '' });
+  assert.equal(env.S().days.length, 0, 'пустой день удалён');
+  assert.equal(normalizeDay(today, {}), null);
+  const g = roundView(env.S(), today).groups[0];
+  await env.repo.updateClass(g.id, { room: ' 230 ' });
+  assert.equal(roundView(env.S(), today).groups[0].room, '230');
+  assert.ok(roundView(env.S(), today).groups[0].tutor, 'воспитатель класса в обходе');
+  await assert.rejects(() => env.repo.updateClass(g.id, { room: 'х'.repeat(30) }), /не длиннее/);
+  assert.equal(roundView(env.S(), today).classesLeft, 15);
 });

@@ -27,9 +27,9 @@ function server() {
   };
   globalThis.fetch = fetchMock;
   server.offline = false;
-  const allow = (device, name = 'Классный руководитель') => {
+  const allow = (device, name = 'Классный руководитель', role = 'admin') => {
     post({ type: 'access', action: 'request', deviceHash: sha(device), name, note: '' });
-    return post({ type: 'access', action: 'decide', token, id: sha(device).slice(0, 12), decision: 'allow' });
+    return post({ type: 'access', action: 'decide', token, id: sha(device).slice(0, 12), decision: 'allow', role });
   };
   return { sb, token, post, allow };
 }

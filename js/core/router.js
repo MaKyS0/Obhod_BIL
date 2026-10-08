@@ -1,5 +1,6 @@
 // Минимальный hash-маршрутизатор: #/путь/:параметр?запрос
-export function createRouter({ view, routes, makeContext, onChange }) {
+// canEnter(route) → false: страница не строится вовсе (данные администратора не запрашиваются), вместо неё — сообщение.
+export function createRouter({ view, routes, makeContext, onChange, canEnter = () => true }) {
   let cleanup = null;
   let current = null;
 
@@ -46,7 +47,8 @@ export function createRouter({ view, routes, makeContext, onChange }) {
     const refreshed = !!current && current.path === path && current.query && JSON.stringify(current.query) === JSON.stringify(query);
     const scrollY = window.scrollY;
     view.replaceChildren();
-    const route = m ? m.route : { name: 'notfound', render: (ctx) => ctx.view.append(Object.assign(document.createElement('p'), { textContent: 'Страница не найдена.', className: 'loading' })) };
+    let route = m ? m.route : { name: 'notfound', render: (ctx) => ctx.view.append(Object.assign(document.createElement('p'), { textContent: 'Страница не найдена.', className: 'loading' })) };
+    if (m && !canEnter(m.route)) route = { name: m.route.name, denied: true, render: (ctx) => ctx.view.append(Object.assign(document.createElement('div'), { className: 'notice danger', id: 'accessDenied', textContent: 'Раздел доступен только администратору. Если вам нужен этот раздел, попросите администратора изменить вашу роль.' })) };
     current = { name: route.name, path, query, params: m ? m.params : {}, refreshed };
     try {
       const ctx = makeContext({ view, params: current.params, query, route: current });

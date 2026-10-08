@@ -9,7 +9,6 @@ import { saveBackupFile } from './services/backup-file.js';
 import { h, $, $$ } from './ui/dom.js';
 import { toast, toastError } from './ui/toast.js';
 import { yearLabel } from './domain/years.js';
-import * as dashboard from './pages/dashboard.js';
 import * as classes from './pages/classes.js';
 import * as classDetail from './pages/class-detail.js';
 import * as students from './pages/students.js';
@@ -23,6 +22,10 @@ import * as settings from './pages/settings.js';
 import * as search from './pages/search.js';
 import * as accessPage from './pages/access.js';
 import * as rounds from './pages/rounds.js';
+import * as day from './pages/day.js';
+import * as logs from './pages/logs.js';
+import * as calendar from './pages/calendar.js';
+import * as roundReports from './pages/round-reports.js';
 import { accessEndpoint } from './config.js';
 import { runGate, watchAccess, knownRole, forgetRole } from './ui/gate.js';
 import { listRequests, verifyOwner, accessStatus } from './services/access.js';
@@ -36,41 +39,53 @@ import { yearView } from './domain/stats.js';
 // Автотесты (WebDriver) работают без анимации: так проверки не зависят от движения элементов. Включить — window.__LYCEUM_ANIMATE__ = true.
 if (navigator.webdriver && window.__LYCEUM_ANIMATE__ !== true) document.documentElement.classList.add('no-anim');
 
+// Четвёртый элемент — раздел только для администратора: дежурный (USER) его не откроет, страница даже не строится.
 const ROUTES = [
-  ['dashboard', '/', dashboard],
+  ['rounds', '/', rounds],
   ['rounds', '/rounds', rounds],
-  ['classes', '/classes', classes],
-  ['classes', '/class/:id', classDetail],
-  ['students', '/students', students],
-  ['staff', '/staff', staff],
-  ['new-year', '/new-year', newYear],
-  ['history', '/history', history],
-  ['history', '/history/:yearId', history],
-  ['reports', '/reports', reports],
-  ['archive', '/archive', archive],
-  ['import', '/import', importExport],
-  ['settings', '/settings', settings],
-  ['search', '/search', search],
-  ['access', '/access', accessPage],
-].map(([name, path, mod]) => ({ name, path, render: mod.render, title: mod.title }));
+  ['day', '/admin', day, true],
+  ['logs', '/admin/logs', logs, true],
+  ['round-reports', '/admin/reports', roundReports, true],
+  ['calendar', '/admin/calendar', calendar, true],
+  ['classes', '/classes', classes, true],
+  ['classes', '/class/:id', classDetail, true],
+  ['students', '/students', students, true],
+  ['staff', '/staff', staff, true],
+  ['new-year', '/new-year', newYear, true],
+  ['history', '/history', history, true],
+  ['history', '/history/:yearId', history, true],
+  ['reports', '/reports', reports, true],
+  ['archive', '/archive', archive, true],
+  ['import', '/import', importExport, true],
+  ['settings', '/settings', settings, true],
+  ['search', '/search', search, true],
+  ['access', '/access', accessPage, true],
+].map(([name, path, mod, admin]) => ({ name, path, render: mod.render, title: mod.title, admin: !!admin }));
 
-// Меню: рабочие разделы, учебный год, система. owner — пункт виден только владельцу.
+// Меню. Пункт с признаком admin виден только администратору (и закрыт на самом маршруте); дежурному остаётся «Обход».
 const NAV = [
-  { items: [['dashboard', '/', 'Главная', 'home'], ['rounds', '/rounds', 'Вечерний обход', 'moon'], ['classes', '/classes', 'Классы', 'layers'], ['students', '/students', 'Ученики', 'users'], ['staff', '/staff', 'Персонал', 'badge']] },
-  { label: 'Учебный год', items: [['new-year', '/new-year', 'Новый учебный год', 'calendar-next'], ['history', '/history', 'История', 'history'], ['reports', '/reports', 'Отчёты', 'chart'], ['archive', '/archive', 'Архив', 'archive']] },
-  { label: 'Система', items: [['import', '/import', 'Импорт и экспорт', 'swap'], ['access', '/access', 'Доступ', 'shield', true], ['settings', '/settings', 'Настройки', 'sliders']] },
+  { items: [['rounds', '/', 'Обход', 'moon']] },
+  { label: 'Администрирование', admin: true, items: [['day', '/admin', 'Обзор дня', 'eye'], ['students', '/students', 'Ученики', 'users'], ['classes', '/classes', 'Классы', 'layers'], ['staff', '/staff', 'Персонал', 'badge'], ['logs', '/admin/logs', 'Журнал', 'file'], ['access', '/access', 'Запросы доступа', 'shield'], ['round-reports', '/admin/reports', 'Отчёты обхода', 'chart'], ['calendar', '/admin/calendar', 'Календарь', 'calendar']] },
+  { label: 'Учебный год', admin: true, items: [['new-year', '/new-year', 'Новый учебный год', 'calendar-next'], ['history', '/history', 'История', 'history'], ['reports', '/reports', 'Отчёты года', 'chart'], ['archive', '/archive', 'Архив', 'archive']] },
+  { label: 'Система', admin: true, items: [['import', '/import', 'Импорт и экспорт', 'swap'], ['settings', '/settings', 'Настройки', 'sliders']] },
 ];
 
 // Разделы, у которых в меню справа показано число записей (как в привычных рабочих программах).
 const COUNTED = new Set(['classes', 'students', 'staff']);
 
-function buildNav(nav) {
-  nav.replaceChildren(...NAV.map((g, gi) => h('div', { class: `nav-group${gi === NAV.length - 1 ? ' nav-group-end' : ''}`, role: 'group', 'aria-label': g.label || 'Основные разделы' },
+function buildNav(nav, isAdmin) {
+  const groups = NAV.filter((g) => isAdmin || !g.admin);
+  nav.replaceChildren(...groups.map((g, gi) => h('div', { class: `nav-group${gi === groups.length - 1 ? ' nav-group-end' : ''}`, role: 'group', 'aria-label': g.label || 'Основные разделы' },
     g.label ? h('div', { class: 'nav-group-label', 'aria-hidden': 'true' }, g.label) : null,
-    g.items.map(([route, path, label, ic, owner]) => h('a', { href: `#${path}`, 'data-route': route, title: label, class: owner ? 'owner-only' : null }, icon(ic, 18), h('span', { class: 'nav-label' }, label), COUNTED.has(route) ? h('span', { class: 'nav-n', 'data-n': route }) : null, route === 'access' ? h('span', { class: 'nav-count', 'aria-label': 'Новых запросов' }) : null)))));
+    g.items.map(([route, path, label, ic]) => h('a', { href: `#${path}`, 'data-route': route, title: label }, icon(ic, 18), h('span', { class: 'nav-label' }, label), COUNTED.has(route) ? h('span', { class: 'nav-n', 'data-n': route }) : null, route === 'access' ? h('span', { class: 'nav-count', 'aria-label': 'Новых запросов' }) : null)))));
 }
 
 const DAY = 24 * 3600 * 1000;
+
+// Дежурному резервные копии в браузере не нужны (а данные могли остаться от прежней роли): удаляем.
+async function removeLocalBackups(db) {
+  try { for (const b of await db.listBackups()) await db.deleteBackup(b.id); } catch { /* не критично */ }
+}
 
 async function main() {
   const splash = createSplash();
@@ -91,36 +106,45 @@ async function main() {
   await repo.initialize();
   store.listenOtherTabs();
 
-  // Допуск посетителей: если в js/config.js указан адрес скрипта, без решения владельца сайт не открывается.
+  // Допуск: если в js/config.js указан адрес скрипта, без решения администратора сайт не открывается.
+  // Роль определяет сервер (admin | user); значок роли на устройстве нужен только для быстрого открытия, права он не даёт.
   const endpoint = accessEndpoint();
-  const access = { endpoint, owner: !endpoint, pending: 0, onPending: null };
+  const access = { endpoint, role: 'admin', admin: true, owner: true, isOwner: !endpoint, pending: 0, onPending: null };
   let live = null;
   if (endpoint) {
     // Устройство уже допущено и данные на нём есть: открываем сразу, доступ проверяем в фоне (иначе каждое открытие ждёт скрипт Google 4–30 с).
     const known = knownRole();
     const token = store.state.settings.sheetsToken;
-    const quick = known && store.state.settings.liveRev != null && (known !== 'owner' || !!token);
+    const quick = known && store.state.settings.liveRev != null;
     let role;
     if (quick) {
       role = known;
       (async () => {
         try {
-          if (known === 'owner') await verifyOwner(endpoint, token);
-          else if ((await accessStatus(endpoint)).status !== 'allowed') throw Object.assign(new Error('closed'), { code: 'auth' });
+          if (token) await verifyOwner(endpoint, token);
+          else {
+            const st = await accessStatus(endpoint);
+            if (st.status !== 'allowed' || (st.role || 'user') !== known) throw Object.assign(new Error('closed'), { code: 'auth' });
+          }
         } catch (e) {
-          if (e.code === 'auth') { forgetRole(); location.reload(); } // доступ закрыт — экран допуска сам сотрёт данные
+          if (e.code === 'auth') { forgetRole(); location.reload(); } // доступ закрыт или роль изменена — экран допуска разберётся заново
         } // нет связи — работаем с тем, что на устройстве
       })();
     } else ({ role } = await runGate({ endpoint, store, repo, db, view, onShown: () => splash.hide() }));
-    access.owner = role === 'owner';
-    if (access.owner) document.body.dataset.owner = '1';
-    else watchAccess(endpoint);
+    access.role = role;
+    access.admin = role === 'admin';
+    access.owner = access.admin;
+    access.isOwner = access.admin && !!store.state.settings.sheetsToken;
+    if (!access.isOwner) watchAccess(endpoint);
     view.replaceChildren();
     // Общая база: все допущенные устройства работают с одними данными (см. services/live.js).
     live = createLive({
       store,
       endpoint,
+      role,
+      canSheets: access.admin,
       onForbidden: () => location.reload(), // доступ закрыт — экран допуска сотрёт локальные данные
+      onRole: () => { forgetRole(); location.reload(); }, // сервер назвал другую роль: перезагрузка соберёт экран заново
       onConflict: () => toast('Часть ваших изменений не применена: те же данные (например, учебный год) успел изменить другой пользователь. Экран обновлён.', 'error'),
     });
     splash.status('Подключаем общую базу…');
@@ -128,18 +152,30 @@ async function main() {
     if (firstJoin) view.replaceChildren(h('p', { class: 'loading' }, 'Загрузка общих данных…'));
     await live.start({ wait: firstJoin });
     view.replaceChildren();
+    if (!access.admin) await removeLocalBackups(db);
   }
 
-  if (access.owner) document.body.dataset.owner = '1'; // без допуска (локальный режим) пользователь — сам себе владелец
+  // Своё имя (для подписи отметок и вопроса «изменить чужую отметку?»): помним на устройстве, уточняем у сервера.
+  const NAME_KEY = 'lyceum-name';
+  try { access.name = access.isOwner ? 'Владелец' : localStorage.getItem(NAME_KEY) || ''; } catch { access.name = access.isOwner ? 'Владелец' : ''; }
+  if (endpoint && !access.isOwner) {
+    accessStatus(endpoint).then((st) => { if (st.name) { access.name = st.name; try { localStorage.setItem(NAME_KEY, st.name); } catch { /* ignore */ } } }).catch(() => {});
+  }
 
-  buildNav($('#nav'));
+  if (access.admin) document.body.dataset.admin = '1';
+  if (access.isOwner) document.body.dataset.owner = '1';
+  document.body.dataset.role = access.role;
+
+  buildNav($('#nav'), access.admin);
   $('#brandMark').appendChild(logoMark(30));
   $('#menuBtn').appendChild(icon('menu', 18));
   $('#searchForm').prepend(icon('search', 16));
+  if (!access.admin) $('#searchForm').hidden = true; // поиск ведёт по всем ученикам и персоналу — только администратору
 
   const router = createRouter({
     view,
     routes: ROUTES,
+    canEnter: (r) => !r.admin || access.admin,
     makeContext: ({ view: v, params, query, route }) => ({ view: v, params, query, route, store, repo, router, access, get live() { return live; }, get state() { return store.state; }, refresh: () => router.refresh() }),
     onChange: (route) => {
       $$('#nav a').forEach((a) => (a.dataset.route === route.name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
@@ -182,7 +218,7 @@ async function main() {
   searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(goSearch, 200); });
   $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); goSearch(); });
   document.addEventListener('keydown', (e) => {
-    if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') && !document.querySelector('dialog[open]')) { e.preventDefault(); searchInput.focus(); }
+    if (e.key === '/' && access.admin && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') && !document.querySelector('dialog[open]')) { e.preventDefault(); searchInput.focus(); }
   });
 
   // Тема: кнопка в шапке по кругу переключает «как в системе» → светлая → тёмная; выбор — также в Настройках.
@@ -197,7 +233,7 @@ async function main() {
   paintTheme();
   onThemeChange(() => {
     paintTheme();
-    if (['dashboard', 'reports'].includes(router.current?.name)) router.refresh(); // графики берут цвета из темы
+    if (['day', 'round-reports', 'reports', 'history'].includes(router.current?.name)) router.refresh(); // графики берут цвета из темы
   });
 
   const syncBtn = $('#syncStatus');
@@ -206,7 +242,7 @@ async function main() {
     if (!st.sheetsUrl) { location.hash = '#/settings'; return; }
     syncBtn.disabled = true;
     if (live) await live.tick(); // отправить своё и забрать чужое прямо сейчас
-    const r = live && !access.owner ? { ok: live.status.state === 'online', error: live.status.error } : await syncNow(store, repo, { reason: 'manual' }); // владелец ещё и обновляет читаемые листы таблицы; пустую базу сразу не отправляет — защита таблицы
+    const r = live && !access.isOwner ? { ok: live.status.state === 'online', error: live.status.error } : await syncNow(store, repo, { reason: 'manual' }); // владелец ещё и обновляет читаемые листы таблицы; пустую базу сразу не отправляет — защита таблицы
     syncBtn.disabled = false;
     toast(r.ok ? (live ? 'Общая база актуальна' : 'Данные отправлены в Google Таблицы') : r.error, r.ok ? 'success' : 'error');
   });
@@ -230,7 +266,7 @@ async function main() {
     if (db.kind !== 'indexeddb') banners.push(h('div', { class: 'banner danger', role: 'alert' }, h('div', null, h('strong', null, 'Данные не сохраняются. '), `Хранилище браузера (IndexedDB) недоступно${db.fallbackReason ? ` (${db.fallbackReason})` : ''}. Возможно, включён приватный режим. Всё, что вы введёте, пропадёт после закрытия вкладки — экспортируйте данные в JSON.`)));
     if (versionBanner) banners.push(h('div', { class: 'banner warn' }, h('div', null, 'Сайт обновился в другой вкладке. Перезагрузите страницу.'), h('button', { class: 'btn btn-sm', type: 'button', onclick: () => location.reload() }, 'Перезагрузить')));
     const exp = s.lastExportAt ? new Date(s.lastExportAt).getTime() : 0;
-    if (store.state.students.length && Date.now() - exp > 14 * DAY && !['settings', 'rounds'].includes(router.current?.name)) { // на обходе напоминание отвлекает от отметок
+    if (access.admin && store.state.students.length && Date.now() - exp > 14 * DAY && !['settings', 'rounds'].includes(router.current?.name)) { // на обходе напоминание отвлекает от отметок
       banners.push(h('div', { class: 'banner info' }, h('div', null, s.lastExportAt ? 'Резервная копия в файл не скачивалась больше 14 дней.' : 'Вы ещё не сохраняли резервную копию в файл. Данные хранятся только в этом браузере.'),
         h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => { try { await saveBackupFile(repo); toast('Резервная копия сохранена'); } catch (e) { toastError(e); } } }, 'Скачать копию')));
     }
@@ -258,12 +294,12 @@ async function main() {
   document.addEventListener('pointerdown', () => { try { navigator.storage?.persist?.(); } catch { /* ignore */ } }, { once: true });
 
   // Владельцу: число ожидающих запросов рядом с пунктом «Доступ».
-  if (endpoint && access.owner) {
+  if (endpoint && access.admin) {
     const link = $('#nav a[data-route=access]');
     const paint = (n) => { const c = link.querySelector('.nav-count'); c.textContent = n ? String(n) : ''; link.title = n ? `Доступ: новых запросов — ${n}` : 'Доступ'; };
     access.onPending = paint;
     const refresh = async () => {
-      try { const { requests } = await listRequests(endpoint, store.state.settings.sheetsToken); access.pending = requests.filter((r) => r.status === 'pending').length; paint(access.pending); } catch { /* нет связи */ }
+      try { const { requests } = await listRequests(endpoint, store.state.settings.sheetsToken || ''); access.pending = requests.filter((r) => r.status === 'pending').length; paint(access.pending); } catch { /* нет связи */ }
     };
     refresh();
     setInterval(refresh, 60000);

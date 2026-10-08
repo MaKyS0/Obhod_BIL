@@ -2,6 +2,7 @@
 // Запуск: node tests/e2e/run.mjs
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { startServer } from './server.mjs';
 import { encryptJson } from '../../js/domain/crypto-box.js';
 import { makeSandbox, call as gasCall, run as gasRun } from '../helpers/gas-sandbox.mjs';
@@ -19,6 +20,7 @@ function assert(cond, msg) { if (!cond) throw new Error(`Проверка не �
 function eq(a, b, msg) { if (a !== b) throw new Error(`${msg}: ожидалось ${JSON.stringify(b)}, получено ${JSON.stringify(a)}`); }
 
 async function scenario(name, fn, { viewport = { width: 1280, height: 900 }, init, ignoreErrors = null } = {}) {
+  if (process.env.E2E_ONLY && !name.includes(process.env.E2E_ONLY)) return; // E2E_ONLY=Роли node tests/e2e/run.mjs — один сценарий
   const context = await browser.newContext({ viewport, acceptDownloads: true });
   await context.addInitScript("window.__LYCEUM_ACCESS_ENDPOINT__ = '';"); // обычные сценарии идут без допуска, чтобы не зависеть от config.js
   if (init) await context.addInitScript(init);
@@ -74,27 +76,24 @@ function cp1251(str) {
 }
 
 // ---------------------------------------------------------------------------------------------
-await scenario('Первый запуск: 15 классов, пустая главная, DEMO и числа на дашборде = числа в базе', async (page) => {
+await scenario('Первый запуск: 15 классов, главная — обход с пустым состоянием, DEMO из настроек, данные переживают перезагрузку', async (page) => {
   await open(page);
-  eq(await page.textContent('h1'), 'Главная', 'заголовок');
+  eq(await page.textContent('h1'), 'Вечерний обход', 'главная страница — обход');
   assert((await page.textContent('main')).includes('База учеников пуста'), 'пустое состояние');
+  eq(await page.locator('.kpis, .stat').count(), 0, 'на главной нет карточек с показателями');
   eq(await state(page, 'S.classes.length'), 15, 'классов в базе');
   eq(await state(page, 'S.settings.currentYearId'), await state(page, 'S.years[0].id'), 'год');
-  await page.click('text=Загрузить DEMO-данные');
-  await page.waitForFunction(() => window.__lyceum.store.state.students.length > 0);
-  await page.waitForSelector('.stat .value:not(:text-is("0"))');
+  await loadDemo(page);
+  await go(page, '#/');
+  await page.waitForSelector('section.round-class');
   const total = await state(page, "S.students.filter(s => s.status === 'active').length");
-  eq((await page.textContent('.stat .value')).trim(), String(total), 'всего учеников на дашборде');
   assert(total > 300, 'демо загружено');
+  eq(await page.locator('section.round-class').count(), 15, 'все 15 классов в обходе');
   const seven = await state(page, `S.enrollments.filter(e => e.classId && e.classId.includes(':7')).length`);
-  eq((await page.textContent('.mini-table tbody tr:first-child td:nth-child(3)')).trim(), String(seven), 'в строке «7 классы» числа учеников совпадают с базой');
-  eq(await page.locator('.mini-table tbody tr').count(), 5, 'пять параллелей в таблице на главной');
-  assert((await page.textContent('.attention')).includes('DEMO'), 'в блоке «Требует внимания» есть пометка DEMO');
+  assert(seven > 0, 'в седьмых классах есть ученики');
   eq(await page.locator('canvas').count(), 0, 'на главной нет декоративных графиков');
-  eq(await page.locator('.kpis .stat').count(), 5, 'пять ключевых показателей');
-  assert((await page.textContent('.dash')).includes('Вечерний обход'), 'на главной виден вечерний обход');
   await page.reload();
-  await page.waitForSelector('.stat');
+  await page.waitForSelector('section.round-class');
   eq(await state(page, 'S.students.length'), total, 'данные сохранились после перезагрузки');
 });
 
@@ -273,9 +272,9 @@ await scenario('Новый учебный год: предпросмотр, от
   // архив выпускников
   await go(page, '#/archive');
   assert((await page.textContent('button[role=tab][aria-selected=true]')).includes(`(${grads})`), 'выпускники в архиве');
-  // дашборд пересчитан
+  // счётчик в меню пересчитан
   await go(page, '#/');
-  eq((await page.textContent('.stat .value')).trim(), String(total - grads), 'дашборд пересчитан');
+  eq((await page.textContent('#nav .nav-n[data-n=students]')).trim(), String(total - grads), 'число учеников в меню пересчитано');
   // отмена перехода
   await go(page, '#/new-year');
   await page.click('button:has-text("Отменить переход")');
@@ -321,7 +320,7 @@ await scenario('Новый год: «оставить выпуск», второ
   await page.waitForFunction(() => window.__lyceum.store.state.settings.currentYearId === '2027-2028');
   eq(await state(page, `S.enrollments.filter(e => e.status === 'pending-graduation').length`), await state(page, `S.enrollments.filter(e => e.yearId === '2026-2027' && e.classId && e.classId.includes(':11')).length`), 'ожидающие выпуска');
   eq(await state(page, `S.enrollments.filter(e => e.heldBack).length`), 1, 'один остался на второй год');
-  await go(page, '#/');
+  await go(page, '#/new-year');
   await page.click('button:has-text("Оформить выпуск")');
   await modal(page).locator('button:has-text("Оформить выпуск")').click();
   await page.waitForFunction(() => window.__lyceum.store.state.students.some((s) => s.status === 'graduated'));
@@ -440,11 +439,12 @@ await scenario('Допуск: запрос → письмо владельцу �
     await v.page.waitForSelector('.field.invalid');
     eq(sb.mails.length, 0, 'с коротким именем запрос не ушёл');
     await v.page.fill('input[name=visitorName]', 'Мария Петрова');
+    await v.page.fill('input[name=visitorEmail]', 'maria@example.org');
     await v.page.fill('textarea[name=visitorNote]', 'Воспитатель 8-х классов');
     await v.page.click('#requestAccessBtn');
     await v.page.waitForSelector('h1:has-text("Запрос отправлен")');
     eq(sb.mails.length, 1, 'владельцу ушло письмо');
-    assert(sb.mails[0][2].includes('Мария Петрова') && sb.mails[0][2].includes('Воспитатель 8-х классов'), 'в письме имя и сообщение');
+    assert(sb.mails[0][2].includes('Мария Петрова') && sb.mails[0][2].includes('Воспитатель 8-х классов') && sb.mails[0][2].includes('maria@example.org'), 'в письме имя, почта и сообщение');
     // перезагрузка не даёт войти и не создаёт второй запрос
     await v.page.reload();
     await v.page.waitForSelector('h1:has-text("Запрос отправлен")');
@@ -481,17 +481,33 @@ await scenario('Допуск: запрос → письмо владельцу �
     // посетитель всё ещё снаружи
     assert(!(await v.page.locator('#sidebar').isVisible()), 'до решения посетитель не вошёл');
 
-    // загрузим посетителю данные заранее — проверим стирание при отзыве (используем демо до допуска невозможно, поэтому после)
+    // администратор заранее загружает учебные данные: дежурный получит их без личных сведений
+    await go(o.page, '#/settings');
+    await o.page.click('#loadDemoBtn');
+    await o.page.waitForFunction(() => window.__lyceum.store.state.students.length > 300);
+    await o.page.waitForFunction(() => window.__lyceum.store.state.settings.liveRev > 0 && window.__lyceum.store.state.settings.liveOutbox.length === 0);
+    await o.page.click('#nav a[data-route=access]');
+    await o.page.waitForSelector('tr:has-text("Мария Петрова")');
+    assert((await o.page.textContent('tr:has-text("Мария Петрова")')).includes('maria@example.org'), 'почта видна администратору');
     await o.page.click('tr:has-text("Мария Петрова") [data-act=allow]');
     await o.page.waitForSelector('tr:has-text("Мария Петрова"):has-text("Допущен")');
     await v.page.waitForSelector('#sidebar', { state: 'visible' });
-    eq(await v.page.textContent('h1'), 'Главная', 'допущенный посетитель вошёл сам, без перезагрузки');
-    assert(!(await v.page.locator('#nav a[data-route=access]').isVisible()), 'пункта «Доступ» у посетителя нет');
-    await v.page.goto(srv.url + '#/access');
-    await v.page.waitForSelector('.notice.danger:has-text("только владельцу")');
-    await v.page.goto(srv.url + '#/settings');
-    await v.page.click('#loadDemoBtn');
-    await v.page.waitForFunction(() => window.__lyceum.store.state.students.length > 0);
+    eq(await v.page.textContent('h1'), 'Вечерний обход', 'допущенный дежурный вошёл сам и видит обход');
+    eq(await v.page.locator('#nav a').count(), 1, 'в меню дежурного один пункт — «Обход»');
+    eq(await v.page.evaluate(() => document.body.dataset.role), 'user', 'роль — дежурный');
+    assert(!(await v.page.locator('#searchForm').isVisible()), 'поиска по всем ученикам у дежурного нет');
+    await v.page.waitForFunction(() => window.__lyceum.store.state.students.length > 300);
+    // сервер не отдаёт дежурному личные сведения
+    eq(await state(v.page, 'S.students.filter((s) => s.birthDate || s.notes || s.contacts).length'), 0, 'у дежурного нет дат рождения, заметок и контактов');
+    assert(await state(o.page, 'S.students.some((s) => s.birthDate)'), 'у администратора личные сведения на месте');
+    // разделы администратора закрыты: страница даже не строится
+    for (const hash of ['#/access', '#/admin', '#/admin/logs', '#/students', '#/settings']) {
+      await v.page.evaluate((h) => (location.hash = h), hash);
+      await v.page.waitForSelector('#accessDenied');
+      eq(await v.page.locator('#view table, #view form, #view #loadDemoBtn').count(), 0, `${hash}: данных нет, только сообщение`);
+    }
+    await v.page.evaluate(() => (location.hash = '#/'));
+    await v.page.waitForSelector('section.round-class');
 
     // --- второй посетитель получает отказ и остаётся снаружи
     const v2 = await site();
@@ -538,6 +554,151 @@ await scenario('Допуск: запрос → письмо владельцу �
   }
 });
 
+// Читаем скачанный .xlsx настоящим openpyxl: заголовки, значения, автофильтр, закрепление шапки.
+const PY_XLSX = 'import sys, json, openpyxl\nwb = openpyxl.load_workbook(sys.argv[1])\nws = wb.active\nprint(json.dumps({"title": ws.title, "rows": [[(str(c.value) if c.value is not None else None) for c in r] for r in ws.iter_rows()], "filter": ws.auto_filter.ref, "freeze": ws.freeze_panes}))';
+const readXlsx = (file) => JSON.parse(execFileSync('python3', ['-I', '-c', PY_XLSX, file], { encoding: 'utf8' }));
+const downloadOf = async (page, click) => {
+  const [d] = await Promise.all([page.waitForEvent('download'), click()]);
+  const dir = fs.mkdtempSync(`${process.env.TMPDIR || '/tmp'}/lyc-dl-`);
+  const file = `${dir}/${d.suggestedFilename()}`;
+  await d.saveAs(file);
+  return { name: d.suggestedFilename(), file };
+};
+
+await scenario('Роли: запрос → ACCEPT/REJECT → дежурный отмечает обход → администратор видит день, журнал и скачивает новый .xlsx каждый раз', async () => {
+  const sb = makeSandbox();
+  const token = gasRun(sb, 'setup()');
+  const opened = [];
+  const site = async (o) => { const x = await accessSite(sb, o); opened.push(x); return x; };
+  try {
+    const o = await site();
+    await o.page.goto(srv.url);
+    await o.page.click('#ownerLoginBtn');
+    await o.page.fill('input[name=ownerToken]', token);
+    await o.page.click('#ownerLoginSubmit');
+    await o.page.waitForSelector('#sidebar', { state: 'visible' });
+    await o.page.waitForFunction(() => window.__lyceum);
+    await go(o.page, '#/settings');
+    await o.page.click('#loadDemoBtn');
+    await o.page.waitForFunction(() => window.__lyceum.store.state.students.length > 300);
+    await o.page.waitForFunction(() => window.__lyceum.store.state.settings.liveRev > 0 && window.__lyceum.store.state.settings.liveOutbox.length === 0);
+
+    // календарь: администратор назначает дежурного — дежурный увидит его на экране обхода
+    await go(o.page, '#/admin/calendar');
+    await o.page.click('tr.is-today [data-edit]');
+    await modal(o.page).locator('input[name=dutyText]').fill('Иванов (воспитатель)');
+    await modal(o.page).locator('button:has-text("Сохранить")').click();
+    await o.page.waitForSelector('tr.is-today:has-text("Иванов (воспитатель)")');
+    await o.page.waitForFunction(() => window.__lyceum.store.state.settings.liveOutbox.length === 0);
+
+    // два запроса: один примет администратор, другой отклонит
+    const asker = async (name, email) => {
+      const x = await site();
+      await x.page.goto(srv.url);
+      await x.page.fill('input[name=visitorName]', name);
+      await x.page.fill('input[name=visitorEmail]', email);
+      await x.page.click('#requestAccessBtn');
+      await x.page.waitForSelector('h1:has-text("Запрос отправлен")');
+      return x;
+    };
+    const v = await asker('Дежурная Анна', 'anna@example.org');
+    const v2 = await asker('Лишний Человек', 'x@example.org');
+    eq(sb.mails.length, 2, 'на каждый запрос ушло письмо администратору');
+    assert(sb.mails.every((m) => m[2].includes('@example.org')), 'в письмах есть почта просителя');
+    await go(o.page, '#/access');
+    await o.page.click('#accessRefresh');
+    await o.page.waitForSelector('tr:has-text("Дежурная Анна") [data-act=allow]');
+    // ACCEPT / REJECT
+    await o.page.click('tr:has-text("Лишний Человек") [data-act=deny]');
+    await o.page.locator('dialog.modal[open] button:has-text("Отклонить")').last().click();
+    await o.page.waitForSelector('tr:has-text("Лишний Человек"):has-text("Отклонён")');
+    await v2.page.waitForSelector('h1:has-text("В доступе отказано")');
+    await o.page.click('tr:has-text("Дежурная Анна") [data-act=allow]');
+    await o.page.waitForSelector('tr:has-text("Дежурная Анна"):has-text("Допущен")');
+    await v.page.waitForSelector('#sidebar', { state: 'visible' });
+    await v.page.waitForSelector('section.round-class');
+    eq(await v.page.evaluate(() => document.body.dataset.role), 'user', 'принятая как дежурная');
+    assert((await v.page.textContent('.duty-line')).includes('Иванов (воспитатель)'), 'дежурный видит назначенного дежурного');
+
+    // дежурная отмечает двух учеников
+    await v.page.click('button.round-head[data-class="2026-2027:7A"]');
+    await v.page.locator('section[data-class="2026-2027:7A"] .round-row').nth(0).locator('button.rp-sleeping').click();
+    await v.page.locator('section[data-class="2026-2027:7A"] .round-row').nth(1).locator('button.rp-sick').click();
+    await modal(v.page).locator('.reason-chip:has-text("Температура")').click();
+    await v.page.waitForFunction(() => window.__lyceum.store.state.settings.liveOutbox.length === 0 && window.__lyceum.store.state.rounds.filter((r) => r.by).length === 2, null, { timeout: 15000 });
+    eq(await state(v.page, "S.rounds.every((r) => r.by === 'Дежурная Анна')"), true, 'сервер подписал отметки именем дежурной');
+
+    // администратор: отметки пришли в общую базу, «Обзор дня» показывает их с временем и ответственным
+    await o.page.waitForFunction(() => window.__lyceum.store.state.rounds.length >= 2, null, { timeout: 15000 });
+    await go(o.page, '#/admin');
+    await o.page.waitForSelector('h1:has-text("Обзор дня")');
+    const row7a = o.page.locator('table:has(caption:text-is("Обход по классам")) tr:has-text("7A")');
+    await row7a.waitFor();
+    assert((await row7a.textContent()).includes('Дежурная Анна'), 'в строке класса — кто и когда отмечал последним');
+    await o.page.waitForSelector('table:has(caption:text-is("Ученики и статусы")) tr:has-text("Болеет")');
+    await o.page.waitForSelector('table:has(caption:text-is("Ученики и статусы")) tr:has-text("Температура")', { timeout: 15000 }); // причина видна администратору
+    await o.page.selectOption('select[name=dayStatus]', 'sick');
+    eq(await o.page.locator('table:has(caption:text-is("Ученики и статусы")) tbody tr').count(), 1, 'фильтр по статусу');
+    await o.page.selectOption('select[name=dayStatus]', '');
+
+    // Excel: каждый экспорт — новый файл с понятным именем
+    const d1 = await downloadOf(o.page, () => o.page.click('#exportDayBtn'));
+    assert(/^evening-round-\d{4}-\d\d-\d\d-\d\d-\d\d(-\d+)?\.xlsx$/.test(d1.name), `имя файла: ${d1.name}`);
+    const x1 = readXlsx(d1.file);
+    eq(x1.rows[0].join('|'), 'Дата|Время|Ученик|Класс|Статус|Причина|Ответственный', 'заголовки столбцов');
+    assert(x1.rows.length > 300, `строк в файле: ${x1.rows.length}`);
+    assert(x1.filter && x1.freeze === 'A2', 'автофильтр и закрепление шапки');
+    const marked = x1.rows.filter((r) => r[6] === 'Дежурная Анна');
+    eq(marked.length, 2, 'в файле две отметки дежурной');
+    assert(marked.some((r) => r[4] === 'Болеет' && r[5] === 'Температура') && marked.every((r) => /^\d\d:\d\d/.test(r[1])), 'статус, причина и время отметки в файле');
+    assert(x1.rows.slice(1).every((r) => /^\d{4}-\d\d-\d\d/.test(r[0])), 'даты — настоящие даты');
+    const d2 = await downloadOf(o.page, () => o.page.click('#exportDayBtn'));
+    assert(d2.name !== d1.name && /\.xlsx$/.test(d2.name), `второй экспорт — другой файл (${d1.name} / ${d2.name})`);
+
+    // журнал: все события, фильтр по группе и участнику, запись о выгрузке
+    await go(o.page, '#/admin/logs');
+    await o.page.waitForSelector('tbody tr[data-event]', { timeout: 20000 });
+    const seen = async () => (await o.page.$$eval('tbody tr[data-event]', (rows) => rows.map((r) => r.dataset.event)));
+    const ev = await seen();
+    for (const need of ['access-request', 'access-allow', 'access-deny', 'login', 'round-set', 'export']) assert(ev.includes(need), `в журнале есть событие ${need} (${[...new Set(ev)].join(',')})`);
+    assert((await o.page.textContent('tbody')).includes('Дежурная Анна'), 'в журнале видно, кто что делал');
+    await o.page.selectOption('select[name=logGroup]', 'export');
+    await o.page.click('#logApply');
+    await o.page.waitForFunction(() => [...document.querySelectorAll('tbody tr[data-event]')].every((r) => r.dataset.event === 'export') && document.querySelectorAll('tbody tr[data-event]').length >= 2, null, { timeout: 20000 });
+
+    // отчёт за период и выгрузка периода
+    await go(o.page, '#/admin/reports');
+    await o.page.click('#repShow');
+    await o.page.waitForSelector('table:has(caption:text-is("Итоги по дням")) tbody tr', { timeout: 20000 });
+    const d3 = await downloadOf(o.page, () => o.page.click('#repDownload'));
+    assert(d3.name !== d1.name && d3.name !== d2.name, 'выгрузка периода — тоже новый файл');
+    eq(readXlsx(d3.file).rows.filter((r) => r[6] === 'Дежурная Анна').length, 2, 'в файле периода те же две отметки');
+
+    if (process.env.E2E_SHOTS) { // E2E_SHOTS=папка — снимки экранов страниц администратора для ручного просмотра
+      for (const [w, h] of [[1280, 900], [375, 812]]) {
+        await o.page.setViewportSize({ width: w, height: h });
+        for (const [name, hash, sel] of [['day', '#/admin', 'table.data'], ['logs', '#/admin/logs', 'tbody tr[data-event]'], ['reports', '#/admin/reports', 'table.data'], ['access', '#/access', 'table.data']]) {
+          await go(o.page, hash);
+          await o.page.waitForSelector(sel, { timeout: 20000 });
+          await o.page.waitForTimeout(600);
+          await o.page.screenshot({ path: `${process.env.E2E_SHOTS}/${name}-${w}.png` });
+        }
+      }
+      await o.page.setViewportSize({ width: 1280, height: 900 });
+    }
+
+    // отзыв доступа закрывает устройство дежурной
+    await go(o.page, '#/access');
+    await o.page.click('tr:has-text("Дежурная Анна") [data-act=revoke]');
+    await o.page.locator('dialog.modal[open] button:has-text("Отозвать доступ")').click();
+    await v.page.waitForSelector('h1:has-text("Доступ отозван")', { timeout: 10000 });
+    const all = opened.flatMap((x) => x.errors);
+    if (all.length) throw new Error(`Ошибки в консоли браузера:\n  ${all.join('\n  ')}`);
+  } finally {
+    for (const x of opened) await x.context.close();
+  }
+});
+
 await scenario('Общая база: два устройства видят одни данные, правки доходят без перезагрузки, ввод не прерывается, отзыв закрывает доступ', async () => {
   const sb = makeSandbox();
   const token = gasRun(sb, 'setup()');
@@ -575,7 +736,7 @@ await scenario('Общая база: два устройства видят од
     await v.page.waitForSelector('h1:has-text("Запрос отправлен")');
     await go(o.page, '#/access');
     await o.page.waitForSelector('tr:has-text("Мария Петрова")');
-    await o.page.click('tr:has-text("Мария Петрова") [data-act=allow]');
+    await o.page.click('tr:has-text("Мария Петрова") [data-act=allow-admin]');
     await v.page.waitForSelector('#sidebar', { state: 'visible' });
     await v.page.waitForFunction((n) => window.__lyceum && window.__lyceum.store.state.students.length === n, total);
     eq(await state(v.page, 'S.settings.currentYearId'), await state(o.page, 'S.settings.currentYearId'), 'тот же учебный год');
@@ -630,16 +791,21 @@ await scenario('Общая база: два устройства видят од
   }
 });
 
-await scenario('Вечерний обход (телефон 375×812): отметки одним касанием, класс зеленеет, когда отмечены все, массовая отметка, фильтр, сохранение', async (page) => {
+await scenario('Обход (телефон 375×812): главная страница сайта, 4 статуса, время и имя, класс зеленеет, причина, поиск, фильтр, подтверждение массовой отметки', async (page) => {
   await loadDemo(page);
-  await go(page, '#/rounds');
+  await go(page, '#/');
   await page.waitForSelector('section.round-class');
+  eq(await page.textContent('h1'), 'Вечерний обход', 'после входа открывается обход, а не дашборд');
   eq(await page.locator('section.round-class').count(), 15, 'все классы в списке');
   eq(await page.locator('section.round-class[data-done="true"]').count(), 0, 'пока ни один класс не готов');
   const bg = (sel) => page.$eval(sel, (e) => getComputedStyle(e).backgroundColor);
-  const grayBg = await bg('section.round-class[data-class="2026-2027:7A"]');
-  eq(grayBg, 'rgb(236, 239, 243)', 'незавершённый класс серый');
-  assert((await page.textContent('.pagehead .sub')).includes('отмечено 0 из'), 'счётчик в заголовке');
+  eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(236, 239, 243)', 'незавершённый класс серый');
+  assert(/^\d\d:\d\d$/.test((await page.textContent('#roundClock')).trim()), 'на экране текущее время');
+  assert((await page.textContent('.pagehead .sub')).length > 8, 'на экране текущая дата');
+  eq((await page.textContent('#roundMarked')).trim(), '0', 'отмечено: 0');
+  eq((await page.textContent('#roundLeft')).trim(), '15', 'осталось классов: 15');
+  assert((await page.textContent('.duty-line')).includes('не назначен'), 'дежурный не назначен');
+  assert(await page.locator('.seg [data-kind=morning]').count() === 1, 'есть переключатель вида проверки');
 
   // раскрыть 7A, проверить удобство на телефоне
   await page.click('button.round-head[data-class="2026-2027:7A"]');
@@ -648,75 +814,101 @@ await scenario('Вечерний обход (телефон 375×812): отме�
   const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
   assert(w[0] <= w[1], `нет горизонтальной прокрутки на 375px (${w[0]} > ${w[1]})`);
   const sizes = await page.$$eval('section[data-class="2026-2027:7A"] .rp', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
-  assert(sizes.every(([sw, sh]) => sh >= 48 && sw >= 90), `кнопки крупные для пальца: ${JSON.stringify(sizes.slice(0, 3))}`);
-  eq(await page.$$eval('section[data-class="2026-2027:7A"] .rp', (els) => els.map((e) => e.textContent).slice(0, 3).join('|')), 'Болеет|С дома|Ночует', 'три места');
+  assert(sizes.every(([sw, sh]) => sh >= 48 && sw >= 60), `кнопки крупные для пальца: ${JSON.stringify(sizes.slice(0, 4))}`);
+  eq(await page.$$eval('section[data-class="2026-2027:7A"] .round-row:first-child .rp', (els) => els.map((e) => e.innerText.trim()).join('|')), 'Болеет|С дома|Нет|Ночует', 'четыре статуса');
 
-  // отметки: разные места; последняя отметка делает класс зелёным и сворачивает его
-  const places = ['sleeping', 'sick', 'home'];
+  // отметки: разные места; последняя отметка делает класс зелёным и сворачивает его. Красный статус сам открывает окно причины.
+  const places = ['sleeping', 'sick', 'home', 'absent'];
   for (let i = 0; i < n; i++) {
     const row = page.locator('section[data-class="2026-2027:7A"] .round-row').nth(i);
+    const place = places[i % 4];
     if (i === 2) {
-      // прокрутка сохраняется после касания
       await page.evaluate(() => window.scrollTo(0, 400));
       const y0 = await page.evaluate(() => window.scrollY);
-      await row.locator(`button.rp-${places[i % 3]}`).click();
-      await page.waitForTimeout(250);
+      await row.locator(`button.rp-${place}`).click();
+      await page.waitForSelector('dialog.modal[open]');
+      await modal(page).locator('button:has-text("Без причины")').click();
+      await page.waitForSelector('dialog.modal[open]', { state: 'detached' });
       const y1 = await page.evaluate(() => window.scrollY);
       assert(Math.abs(y1 - y0) < 6, `прокрутка не прыгает после отметки (${y0} → ${y1})`);
       continue;
     }
     if (await page.locator('section[data-class="2026-2027:7A"] .round-row').count() <= i) break;
-    await row.locator(`button.rp-${places[i % 3]}`).click();
+    await row.locator(`button.rp-${place}`).click();
+    if (place !== 'sleeping') {
+      if (i === 1) { // готовая причина одним касанием
+        await page.waitForSelector('dialog.modal[open]');
+        eq(await modal(page).locator('.reason-chip:has-text("Температура")').count(), 1, 'готовые причины для «Болеет»');
+        await modal(page).locator('.reason-chip:has-text("Температура")').click();
+      } else {
+        await page.waitForSelector('dialog.modal[open]');
+        await modal(page).locator('button:has-text("Без причины")').click();
+      }
+      await page.waitForSelector('dialog.modal[open]', { state: 'detached' });
+    }
   }
   await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="true"]');
   eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(229, 241, 231)', 'цвет зелёный');
   await page.waitForSelector('button.round-head[data-class="2026-2027:7A"][aria-expanded="false"]');
   eq(await page.locator('section.round-class[data-done="true"]').count(), 1, 'готов ровно один класс');
   eq(await state(page, "S.rounds.filter(r => r.classId === '2026-2027:7A').length"), n, 'отметки записаны в базу');
-  assert((await page.textContent('.pagehead .sub')).includes('готово классов: 1 из 15'), 'заголовок: готово классов');
+  eq((await page.textContent('#roundLeft')).trim(), '14', 'осталось классов: 14');
+  assert(await state(page, "S.rounds.every(r => /^\\d{4}-\\d\\d-\\d\\dT/.test(r.at))"), 'у каждой отметки есть время');
 
-  // причина: у первого ученика 7A (отмечен «Ночует») — своя причина; у второго («Болеет») — готовая одним касанием
+  // время отметки видно в строке; причина — своя
   await page.click('button.round-head[data-class="2026-2027:7A"]');
   const first = page.locator('section[data-class="2026-2027:7A"] .round-row').nth(0);
   const second = page.locator('section[data-class="2026-2027:7A"] .round-row').nth(1);
+  assert(/^\d\d:\d\d/.test((await first.locator('.round-when').innerText()).trim()), 'у отмеченного показано время');
   eq(await second.locator('button.rp-sick').getAttribute('aria-pressed'), 'true', 'второй ученик отмечен «Болеет»');
-  assert((await first.locator('.round-reason').innerText()).trim() === 'Причина', 'у отмеченного есть кнопка «Причина»');
-  await second.locator('.round-reason').click();
-  eq(await modal(page).count(), 1, 'окно причины');
-  assert((await modal(page).locator('.reason-chip').count()) >= 4, 'готовые причины для «Болеет»');
-  await modal(page).locator('.reason-chip:has-text("Температура")').click();
-  await page.waitForSelector('dialog.modal[open]', { state: 'detached' });
-  await page.waitForSelector('section[data-class="2026-2027:7A"] .round-row:has-text("Причина: Температура")');
+  assert((await second.locator('.round-reason').innerText()).includes('Температура'), 'причина «Температура» сохранена');
+  assert((await first.locator('.round-reason').innerText()).trim() === 'Причина', 'у «Ночует» есть кнопка «Причина»');
   await first.locator('.round-reason').click();
   await modal(page).locator('input[name=roundReason]').fill('Был у врача');
   await modal(page).locator('button:has-text("Сохранить")').click();
   await page.waitForSelector('section[data-class="2026-2027:7A"] .round-row:has-text("Причина: Был у врача")');
-  const withReason = await state(page, 'S.rounds.filter((r) => r.reason).length');
-  eq(withReason, 2, 'две причины в базе');
-  // смена места сбрасывает причину
+  eq(await state(page, 'S.rounds.filter((r) => r.reason).length'), 2, 'две причины в базе');
+  // смена места сбрасывает причину (окно причины открывается заново — закрываем)
   await second.locator('button.rp-home').click();
+  await page.waitForSelector('dialog.modal[open]');
+  await modal(page).locator('button:has-text("Без причины")').click();
   await page.waitForFunction(() => window.__lyceum.store.state.rounds.filter((r) => r.reason).length === 1);
 
-  // снять отметку — класс снова серый; повторное касание того же места снимает (класс 7A уже раскрыт)
+  // снять отметку — класс снова серый; повторное касание того же места снимает
   await page.locator('section[data-class="2026-2027:7A"] .round-row').first().locator('button[aria-pressed="true"]').click();
   await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="false"]');
   eq(await bg('section.round-class[data-class="2026-2027:7A"]'), 'rgb(236, 239, 243)', 'серый');
   await page.locator('section[data-class="2026-2027:7A"] .round-row').first().locator('button.rp-sleeping').click();
   await page.waitForSelector('section[data-class="2026-2027:7A"][data-done="true"]');
 
-  // массовая отметка в 7B: «Всем неотмеченным: Ночует»
+  // массовая отметка в 7B с подтверждением
   await page.click('button.round-head[data-class="2026-2027:7B"]');
   await page.locator('section[data-class="2026-2027:7B"] .rp-sick').first().click();
+  await modal(page).locator('button:has-text("Без причины")').click();
   await page.waitForSelector('section[data-class="2026-2027:7B"] button[aria-pressed="true"].rp-sick');
   await page.click('button[data-bulk="2026-2027:7B"]');
+  await page.waitForSelector('dialog.modal[open]');
+  await modal(page).locator('button:has-text("Отмена")').click();
+  eq(await page.locator('section[data-class="2026-2027:7B"][data-done="true"]').count(), 0, 'без подтверждения класс не закрыт');
+  await page.click('button[data-bulk="2026-2027:7B"]');
+  await modal(page).locator('button:has-text("Отметить:")').click();
   await page.waitForSelector('section[data-class="2026-2027:7B"][data-done="true"]');
   eq(await state(page, "S.rounds.filter(r => r.classId === '2026-2027:7B' && r.place === 'sick').length"), 1, 'ранее выбранное «Болеет» не затёрто');
 
-  // фильтр
-  await page.check('.round-only input');
+  // фильтры и поиск
+  await page.click('[data-filter=open]');
   eq(await page.locator('section.round-class[data-done="true"]').count(), 0, 'готовые классы скрыты фильтром');
   eq(await page.locator('section.round-class').count(), 13, 'остались неготовые');
-  await page.uncheck('.round-only input');
+  await page.click('[data-filter=all]');
+  await page.click('[data-filter=away]');
+  assert(await page.locator('section.round-class .round-row').count() >= 3, 'фильтр «Отсутствуют» показывает ушедших');
+  assert(await page.locator('section.round-class .rp-sleeping[aria-pressed="true"]').count() === 0, 'в «Отсутствуют» нет «Ночует»');
+  await page.click('[data-filter=all]');
+  const lastName = await state(page, "S.students.find(s => s.id === S.rounds[0].studentId).lastName");
+  await page.fill('#roundSearch', lastName);
+  await page.waitForSelector('.round-class.found .round-row');
+  assert(await page.locator('.round-class.found .round-row').count() >= 1, 'поиск находит ученика среди всех классов');
+  await page.fill('#roundSearch', '');
 
   // сохранение после перезагрузки
   const total = await state(page, 'S.rounds.length');
@@ -724,6 +916,15 @@ await scenario('Вечерний обход (телефон 375×812): отме�
   await page.waitForSelector('section.round-class');
   eq(await state(page, 'S.rounds.length'), total, 'отметки сохранились');
   eq(await page.locator('section.round-class[data-done="true"]').count(), 2, 'зелёные классы после перезагрузки');
+  // утренняя проверка — отдельный список, вечерние отметки не затрагивает
+  await page.click('.seg [data-kind=morning]');
+  await page.waitForSelector('h1:has-text("Утренняя проверка")');
+  eq(await page.locator('section.round-class[data-done="true"]').count(), 0, 'утренняя проверка пока пустая');
+  await page.click('button.round-head[data-class="2026-2027:7A"]');
+  await page.locator('section[data-class="2026-2027:7A"] .rp-sleeping').first().click();
+  await page.waitForFunction(() => window.__lyceum.store.state.rounds.some((r) => r.kind === 'morning'));
+  eq(await state(page, "S.rounds.filter(r => r.kind === 'morning').length"), 1, 'утренняя отметка отдельная');
+  eq(await state(page, 'S.rounds.length'), total + 1, 'вечерние отметки на месте');
   // пункт меню на телефоне
   await page.click('#menuBtn');
   await page.waitForSelector('#nav a[data-route=rounds]', { state: 'visible' });
@@ -745,11 +946,7 @@ await scenario('Анимации и подпись разработчика: в�
   assert((await foot.textContent()).includes('Разработчик MaKyS0'), 'имя разработчика');
   eq(await foot.locator('a').first().getAttribute('href'), 'https://github.com/MaKyS0', 'ссылка на GitHub');
   assert((await foot.locator('a').first().getAttribute('rel')).includes('noopener'), 'ссылка с noopener');
-  // числа на главной «набираются», но итог точный
-  await page.click('text=Загрузить DEMO-данные');
-  await page.waitForFunction(() => window.__lyceum.store.state.students.length > 0);
-  const total = await state(page, "S.students.filter(s => s.status === 'active').length");
-  await page.waitForFunction((n) => document.querySelector('.stat .value')?.textContent.trim() === String(n), total, { timeout: 4000 });
+  await loadDemo(page);
   // навигация: новая страница снова анимируется, прокрутка вверх; обновление данных страницу не перезапускает
   await go(page, '#/rounds');
   await page.waitForSelector('section.round-class');
@@ -797,16 +994,33 @@ await scenario('Тёмная тема: кнопка в шапке и выбор 
 
   // контраст ключевых элементов не ниже 4.5:1 (WCAG AA)
   await loadDemo(page);
-  await go(page, '#/');
+  await go(page, '#/history');
   await page.waitForSelector('.stat .label');
-  const ratios = await page.evaluate(() => {
+  const contrast = (pairs) => page.evaluate((list) => {
     const parse = (c) => (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
     const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
     const ratio = (a, b) => { const [x, y] = [lum(parse(a)), lum(parse(b))]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-    const pair = (sel, bgSel) => { const e = document.querySelector(sel); const b = document.querySelector(bgSel || sel); return [sel, ratio(getComputedStyle(e).color, getComputedStyle(b).backgroundColor)]; };
-    return [pair('.dash-sec h2', 'body'), pair('.facts dt', 'body'), pair('.btn-primary'), pair('.stat .label', '.stat'), pair('#nav a[aria-current=page]'), pair('#nav a:not([aria-current])', '.sidebar'), pair('.pagehead .sub', 'body'), pair('.mini-table td', 'body'), pair('.nav-group-label', '.sidebar')].filter(Boolean);
+    return list.map(([sel, bgSel]) => { const e = document.querySelector(sel); const b = document.querySelector(bgSel || sel); return [sel, e && b ? ratio(getComputedStyle(e).color, getComputedStyle(b).backgroundColor) : null]; });
+  }, pairs);
+  const check = (ratios) => { for (const [sel, r] of ratios) { assert(r !== null, `элемент ${sel} не найден`); assert(r >= 4.5, `контраст ${sel}: ${r.toFixed(2)} < 4.5`); } };
+  check(await contrast([['.stat .label', '.stat'], ['#nav a[aria-current=page]'], ['#nav a:not([aria-current])', '.sidebar'], ['.pagehead .sub', 'body'], ['.mini-table td', 'body'], ['.nav-group-label', '.sidebar']]));
+  await go(page, '#/new-year');
+  await page.waitForSelector('#startYearBtn');
+  check(await contrast([['.btn-primary']]));
+  // экран обхода: сводка, статусы, подписи — в тёмной теме
+  await page.evaluate(async () => {
+    const { repo, store } = window.__lyceum;
+    const t = new Date(); const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    const ids = store.state.students.slice(0, 6).map((x) => x.id);
+    await repo.setRounds(ids.slice(0, 2), iso, 'sleeping', { by: 'Проверка' });
+    await repo.setRounds(ids.slice(2, 3), iso, 'sick', { by: 'Проверка' });
+    await repo.setRounds(ids.slice(3, 4), iso, 'home', { by: 'Проверка' });
+    await repo.setRounds(ids.slice(4, 5), iso, 'absent', { by: 'Проверка' });
   });
-  for (const [sel, r] of ratios) assert(r >= 4.5, `контраст ${sel}: ${r.toFixed(2)} < 4.5`);
+  await go(page, '#/');
+  await page.waitForSelector('section.round-class');
+  await page.click('button.round-head[data-class="2026-2027:7A"]');
+  check(await contrast([['.round-stats', '.round-sum'], ['.duty-line .k', 'body'], ['.round-clock', 'body'], ['.rc-sick'], ['.rc-home'], ['.rc-sleeping'], ['.rc-absent'], ['.round-when', '.round-body'], ['.rp-sleeping[aria-pressed="true"]'], ['.rp-sick[aria-pressed="true"]'], ['.rp-home[aria-pressed="true"]'], ['.rp-absent[aria-pressed="true"]'], ['.seg button[aria-pressed="true"]'], ['.round-reason', '.round-body']]));
   // печать всегда светлая
   await page.emulateMedia({ media: 'print' });
   eq(await bg('body'), 'rgb(255, 255, 255)', 'печать белая даже в тёмной теме');
@@ -828,7 +1042,7 @@ await scenario('Тёмная тема: кнопка в шапке и выбор 
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
   // графики и обход в тёмной теме открываются без ошибок
   await page.click('[data-theme-opt=dark]');
-  await go(page, '#/');
+  await go(page, '#/history');
   await page.waitForSelector('.kpis');
   await go(page, '#/reports');
   await page.waitForSelector('.tabs');
@@ -840,11 +1054,11 @@ await scenario('Тёмная тема: кнопка в шапке и выбор 
 await scenario('Интерфейс: меню по группам с иконками, таблица (выбор, пагинация, массовый перевод), нет emoji, единый набор иконок', async (page) => {
   await loadDemo(page);
   await go(page, '#/');
-  // меню: три группы, у каждого пункта своя svg-иконка из единого набора
-  eq(await page.locator('#nav .nav-group').count(), 3, 'три группы меню');
-  eq((await page.locator('#nav .nav-group-label').allTextContents()).join('|'), 'Учебный год|Система', 'подписи групп');
+  // меню: четыре группы, у каждого пункта своя svg-иконка из единого набора
+  eq(await page.locator('#nav .nav-group').count(), 4, 'четыре группы меню');
+  eq((await page.locator('#nav .nav-group-label').allTextContents()).join('|'), 'Администрирование|Учебный год|Система', 'подписи групп');
   const items = await page.$$eval('#nav a', (as) => as.map((a) => [a.dataset.route, !!a.querySelector('svg.ico'), a.querySelector('.nav-label').textContent]));
-  eq(items.map((x) => x[0]).join(','), 'dashboard,rounds,classes,students,staff,new-year,history,reports,archive,import,access,settings', 'порядок разделов');
+  eq(items.map((x) => x[0]).join(','), 'rounds,day,students,classes,staff,logs,access,round-reports,calendar,new-year,history,reports,archive,import,settings', 'порядок разделов');
   assert(items.every((x) => x[1]), 'у каждого пункта есть иконка');
   eq(await page.$$eval('#nav a[aria-current=page]', (e) => e.length), 1, 'активный раздел один');
   // во всём интерфейсе нет emoji и случайных символов-иконок
@@ -932,7 +1146,7 @@ await scenario('Экран загрузки: эмблема БИЛ (птица �
 await scenario('Аудит интерфейса: шапка и подвал выровнены, показатели в одну строку, счётчики меню, иконки действий, фильтры в строке поиска', async (page) => {
   await loadDemo(page);
   await go(page, '#/');
-  await page.waitForSelector('.kpis');
+  await page.waitForSelector('.round-sum');
   const box = (sel) => page.evaluate((q) => { const r = document.querySelector(q).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), b: Math.round(r.bottom) }; }, sel);
   // подвал начинается там же, где и содержимое страницы
   const main = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('main')).paddingLeft) + document.querySelector('main').getBoundingClientRect().left);
@@ -945,24 +1159,13 @@ await scenario('Аудит интерфейса: шапка и подвал вы
   assert(Math.max(...hs) - Math.min(...hs) <= 2, `поиск, статус базы и тема одной высоты: ${hs}`);
   // меню: «Система» прижата к низу, у классов, учеников и персонала — счётчики
   const nums = await page.$$eval('#nav .nav-n', (e) => e.map((n) => n.textContent));
-  eq(nums.join(','), `15,${await state(page, 'S.students.filter(x => x.status === "active").length')},${await state(page, 'S.staff.filter(x => !x.archived).length')}`, 'счётчики в меню');
+  eq(nums.join(','), `${await state(page, 'S.students.filter(x => x.status === "active").length')},15,${await state(page, 'S.staff.filter(x => !x.archived).length')}`, 'счётчики в меню');
   const last = await box('.nav-group-end');
   const sb = await box('.sidebar-foot');
   assert(sb.y - last.b <= 12, 'группа «Система» стоит над подвалом меню');
-  // показатели: пять в одной строке, каждый — ссылка на свой раздел
-  const tops = await page.$$eval('.kpis .stat', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-  eq(new Set(tops).size, 1, 'пять показателей в одной строке');
-  eq((await page.$$eval('.kpis a.stat', (e) => e.map((a) => a.getAttribute('href')))).join(' '), '#/students #/staff #/staff #/rounds #/archive', 'показатели ведут в разделы');
-  // «Требует внимания» с числом, строки таблицы и подписи не слипаются
-  assert((await page.textContent('.attention-head')).includes('Требует внимания'), 'заголовок блока внимания');
-  // правая часть планшета: показатели тоже в одну строку
-  for (const [w, h] of [[1024, 768], [820, 1180]]) {
-    await page.setViewportSize({ width: w, height: h });
-    await page.waitForTimeout(80);
-    const t = await page.$$eval('.kpis .stat', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    eq(new Set(t).size, 1, `${w}: показатели в одной строке`);
-  }
-  await page.setViewportSize({ width: 1280, height: 900 });
+  // сводка обхода — одна полоса, а не россыпь карточек
+  eq(await page.locator('.round-sum').count(), 1, 'сводка обхода — одна полоса');
+  assert((await box('.round-sum')).h < 120, 'сводка компактная');
   // таблицы: заголовки без КАПСА, действия в строке — иконки, ссылки без подчёркивания
   await go(page, '#/students');
   await page.waitForSelector('table.data');
@@ -982,7 +1185,7 @@ await scenario('Аудит интерфейса: шапка и подвал вы
 
 await scenario('Все страницы на четырёх размерах экрана: без горизонтальной прокрутки и ошибок в консоли', async (page) => {
   await loadDemo(page);
-  const hashes = ['#/', '#/rounds', '#/classes', classHash('7A'), '#/students', '#/staff', '#/new-year', '#/history', '#/reports', '#/archive', '#/import', '#/access', '#/settings', '#/search?q=7A'];
+  const hashes = ['#/', '#/rounds', '#/admin', '#/admin/logs', '#/admin/reports', '#/admin/calendar', '#/classes', classHash('7A'), '#/students', '#/staff', '#/new-year', '#/history', '#/reports', '#/archive', '#/import', '#/access', '#/settings', '#/search?q=7A'];
   for (const [w, h] of [[1440, 900], [1024, 768], [768, 1024], [375, 812]]) {
     await page.setViewportSize({ width: w, height: h });
     for (const hash of hashes) {

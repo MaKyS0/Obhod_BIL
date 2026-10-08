@@ -3,7 +3,7 @@ import { DATA_STORES } from '../domain/state.js';
 import { createMemoryDb } from './memory-db.js';
 
 const DB_NAME = 'lyceum-db';
-const DB_VERSION = 2; // 2: добавлен раздел rounds (вечерний обход); недостающие разделы создаются при обновлении
+const DB_VERSION = 3; // 3: раздел days (календарь); 2: раздел rounds (вечерний обход); недостающие разделы создаются при обновлении
 
 function reqP(req) {
   return new Promise((resolve, reject) => {

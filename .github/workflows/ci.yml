@@ -13,6 +13,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      - run: pip install openpyxl   # проверка выгрузки .xlsx настоящим читателем Excel-файлов
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e

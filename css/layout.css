@@ -134,8 +134,6 @@ main { padding: 18px 28px 36px; max-width: 1280px; width: 100%; outline: none; f
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 
 /* Допуск посетителей */
-#nav a.owner-only { display: none; }
-body[data-owner="1"] #nav a.owner-only { display: flex; }
 .card.owner-only, .field.owner-only, .owner-only-block { display: none; }
 body[data-owner="1"] .card.owner-only, body[data-owner="1"] .field.owner-only, body[data-owner="1"] .owner-only-block { display: block; }
 body.gated .sidebar, body.gated .topbar, body.gated .banners, body.gated .backdrop { display: none !important; }

@@ -33,7 +33,7 @@ async function call(endpoint, body) {
   }
   if (!json.ok) {
     // Старая версия скрипта не знает запросов общей базы и отвечает «auth» / «Неверный формат данных».
-    if (json.error === 'auth' || json.error === 'Неверный формат данных') throw new LiveError('outdated', 'Скрипт Google устарел: обновите Code.gs и сделайте новое развёртывание');
+    if (json.error === 'auth' || json.error === 'unknown-action' || json.error === 'Неверный формат данных') throw new LiveError('outdated', 'Скрипт Google устарел: обновите Code.gs и сделайте новое развёртывание');
     throw new LiveError(json.error || 'server', json.error === 'forbidden' ? 'Доступ закрыт' : `Ошибка сервера: ${json.error}`);
   }
   return json;
@@ -41,7 +41,10 @@ async function call(endpoint, body) {
 
 const wire = ({ put, del, clear, settings, expect, bid }) => ({ put, del, clear, settings, expect, bid });
 
-export function createLive({ store, endpoint, getDevice = deviceSecret, onForbidden = () => {}, onConflict = () => {} }) {
+// role — роль, которую устройство получило при входе (admin | user); onRole срабатывает, если сервер вдруг ответил другой ролью (права изменили).
+// canSheets — отправлять ли читаемые листы таблицы (только администратор).
+export function createLive({ store, endpoint, getDevice = deviceSecret, onForbidden = () => {}, onConflict = () => {}, role: initialRole = null, onRole = () => {}, canSheets = true }) {
+  let role = initialRole;
   const status = { state: store.state.settings.liveRev == null ? 'connecting' : 'online', lastOkAt: null, error: null };
   const subs = new Set();
   const notify = () => subs.forEach((fn) => fn(snapshotStatus()));
@@ -53,6 +56,13 @@ export function createLive({ store, endpoint, getDevice = deviceSecret, onForbid
   let kick = null;
   let sheetsTimer = null;
   let failures = 0;
+
+  // Запрос к серверу с контролем роли: ответ всегда содержит role, определённую сервером.
+  const request = async (body) => {
+    const r = await call(endpoint, body);
+    if (r.role && role && r.role !== role) { const prev = role; role = r.role; onRole(r.role, prev); } else if (r.role && !role) role = r.role;
+    return r;
+  };
 
   const settings = () => store.state.settings;
   const auth = () => ({ token: settings().sheetsToken || '', device: getDevice() });
@@ -76,13 +86,13 @@ export function createLive({ store, endpoint, getDevice = deviceSecret, onForbid
 
   // Первое подключение этого браузера: забираем общую базу (или, если она пуста, отдаём свои данные).
   async function attach() {
-    const r = await call(endpoint, { ...auth(), action: 'pull', sinceRev: -1 });
+    const r = await request({ ...auth(), action: 'pull', sinceRev: -1 });
     if (r.data) {
       if (!isUsableSnapshot(r.data)) throw new LiveError('bad-data', 'Общая база повреждена или создана другой версией сайта');
       if (!isEmptyDb(store.state)) await store.createBackup('before-live'); // прежние данные этого браузера остаются в «Резервных копиях»
       await applySnapshot(r.data, r.rev, { dropOutbox: true });
     } else if (!isEmptyDb(store.state)) {
-      const s = await call(endpoint, { ...auth(), action: 'seed', data: exportData(store.state) });
+      const s = await request({ ...auth(), action: 'seed', data: exportData(store.state) });
       await store.commit({ put: {}, del: {}, settings: { liveRev: s.rev, liveOutbox: [] } }, { system: true });
     } else {
       await store.commit({ put: {}, del: {}, settings: { liveRev: 0, liveOutbox: [] } }, { system: true });
@@ -91,17 +101,32 @@ export function createLive({ store, endpoint, getDevice = deviceSecret, onForbid
   }
 
   async function pull() {
-    const r = await call(endpoint, { ...auth(), action: 'pull', sinceRev: settings().liveRev });
+    const r = await request({ ...auth(), action: 'pull', sinceRev: settings().liveRev });
     if (r.same) return;
     if (!isUsableSnapshot(r.data)) throw new LiveError('bad-data', 'Общая база повреждена или создана другой версией сайта');
     await applySnapshot(r.data, r.rev);
+  }
+
+  // Сервер подписал отметки (ответственный, время): подставляем подписи в локальные записи тихо, не трогая то, что ещё не отправлено.
+  async function applyPatched(rounds, sentCount) {
+    if (!rounds || !rounds.length) return;
+    const pending = new Set();
+    for (const b of (settings().liveOutbox || []).slice(sentCount)) {
+      for (const r of (b.put && b.put.rounds) || []) pending.add(r.id);
+      for (const id of (b.del && b.del.rounds) || []) pending.add(id);
+    }
+    await store.commitFrom((cur) => {
+      const have = new Map((cur.rounds || []).map((r) => [r.id, r]));
+      const put = rounds.filter((r) => have.has(r.id) && !pending.has(r.id) && (have.get(r.id).by !== r.by || have.get(r.id).at !== r.at));
+      return { changes: { put: put.length ? { rounds: put } : {}, del: {}, settings: {} }, opts: quiet };
+    });
   }
 
   async function push() {
     const sent = (settings().liveOutbox || []).slice(0, 200);
     let r;
     try {
-      r = await call(endpoint, { ...auth(), action: 'push', baseRev: settings().liveRev, batches: sent.map(wire) });
+      r = await request({ ...auth(), action: 'push', baseRev: settings().liveRev, batches: sent.map(wire) });
     } catch (e) {
       if (e.code !== 'no-state') throw e;
       // На сервере базу удалили: подключаемся заново и отдаём свои данные.
@@ -112,7 +137,10 @@ export function createLive({ store, endpoint, getDevice = deviceSecret, onForbid
     if (r.data) {
       if (!isUsableSnapshot(r.data)) throw new LiveError('bad-data', 'Общая база повреждена или создана другой версией сайта');
       await applySnapshot(r.data, r.rev, { sent: sent.length });
-    } else await finishPush(r.rev, sent.length);
+    } else {
+      await finishPush(r.rev, sent.length);
+      await applyPatched(r.patched && r.patched.rounds, sent.length);
+    }
     if (r.rejected) onConflict(r.rejected);
     scheduleSheets();
   }
@@ -182,9 +210,9 @@ export function createLive({ store, endpoint, getDevice = deviceSecret, onForbid
 
   // Читаемые листы таблицы («Ученики», «Классы» …) обновляет тот, кто внёс изменение.
   async function sendSheets() {
-    if (stopped || (settings().liveOutbox || []).length) return;
+    if (stopped || !canSheets || (settings().liveOutbox || []).length) return;
     try {
-      await call(endpoint, { ...auth(), action: 'sheets', sheets: buildSheetsPayload(store.state, { includeBackup: false }).sheets });
+      await request({ ...auth(), action: 'sheets', sheets: buildSheetsPayload(store.state, { includeBackup: false }).sheets });
     } catch (e) {
       if (e.code === 'forbidden') return;
     }
@@ -216,6 +244,9 @@ export function createLive({ store, endpoint, getDevice = deviceSecret, onForbid
     },
     tick,
     sendSheetsNow: sendSheets,
+    /** Запрос администратора к серверу (журнал, отметки за период, сводки): { action, ...параметры } → ответ сервера. */
+    request: (action, extra = {}) => request({ ...auth(), action, ...extra }),
+    get role() { return role; },
     // Первое подключение с ожиданием (для нового браузера); для уже подключённого — просто запуск в фоне.
     async start({ wait = false, timeoutMs = 15000 } = {}) {
       const first = tick();

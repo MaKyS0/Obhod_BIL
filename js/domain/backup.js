@@ -75,6 +75,6 @@ export function canonicalForCompare(data) {
     return v;
   };
   const c = strip(data);
-  for (const k of ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments', 'rounds']) c[k].sort((a, b) => (a.id < b.id ? -1 : 1));
+  for (const k of ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments', 'rounds', 'days']) c[k].sort((a, b) => (a.id < b.id ? -1 : 1));
   return c;
 }

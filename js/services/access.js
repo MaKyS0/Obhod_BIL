@@ -28,6 +28,9 @@ export async function sha256Hex(text) {
 
 const ERRORS = {
   'name-required': 'Укажите имя и фамилию (не короче 3 символов)',
+  'bad-email': 'Похоже, в адресе почты ошибка. Проверьте или оставьте поле пустым.',
+  'owner-only': 'Роль администратора выдаёт и меняет только владелец (по токену)',
+  'not-allowed': 'Роль можно менять только у допущенного устройства',
   'rate-limit': 'Сейчас слишком много запросов. Попробуйте позже.',
   auth: 'Неверный токен владельца',
   'not-configured': 'Скрипт ещё не настроен: запустите «Учёт лицея → Настройка» в таблице',
@@ -37,7 +40,7 @@ const ERRORS = {
 async function post(endpoint, payload) {
   let res;
   try {
-    res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ type: 'access', ...payload }), redirect: 'follow' });
+    res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ type: 'access', device: deviceSecret(), ...payload }), redirect: 'follow' });
   } catch {
     throw new Error('Нет связи с сервером допуска. Проверьте интернет и повторите.');
   }
@@ -55,10 +58,12 @@ async function post(endpoint, payload) {
   return json;
 }
 
-export async function requestAccess(endpoint, name, note) {
-  return post(endpoint, { action: 'request', deviceHash: await sha256Hex(deviceSecret()), name, note });
+export async function requestAccess(endpoint, name, note, { email = '', wantRole = 'user' } = {}) {
+  return post(endpoint, { action: 'request', deviceHash: await sha256Hex(deviceSecret()), name, note, email, wantRole });
 }
 export const accessStatus = (endpoint) => post(endpoint, { action: 'status', device: deviceSecret() });
 export const verifyOwner = (endpoint, token) => post(endpoint, { action: 'whoami', token });
-export const listRequests = (endpoint, token) => post(endpoint, { action: 'list', token });
-export const decideRequest = (endpoint, token, id, decision) => post(endpoint, { action: 'decide', token, id, decision });
+// Администратор — владелец (токен) или устройство с ролью «администратор» (токен не нужен, сервер узнаёт устройство).
+export const meAccess = (endpoint, token = '') => post(endpoint, { action: 'me', token });
+export const listRequests = (endpoint, token = '') => post(endpoint, { action: 'list', token });
+export const decideRequest = (endpoint, token, id, decision, role = 'user') => post(endpoint, { action: 'decide', token, id, decision, role });

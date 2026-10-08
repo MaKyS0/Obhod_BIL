@@ -2,9 +2,9 @@
 import { DEFAULT_LETTERS, MIN_GRADE, MAX_GRADE } from './classes.js';
 import { yearFromDate } from './years.js';
 
-export const DATA_STORES = ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments', 'promotions', 'rounds'];
+export const DATA_STORES = ['years', 'classes', 'students', 'enrollments', 'staff', 'assignments', 'promotions', 'rounds', 'days'];
 // Разделы, которых может не быть в старых копиях и в старой общей базе (появились позже): считаются пустыми.
-export const OPTIONAL_STORES = ['rounds'];
+export const OPTIONAL_STORES = ['rounds', 'days']; // days — календарь: праздничные дни и дежурные
 export const SCHEMA_VERSION = 1;
 
 // Настройки, общие для всех устройств (остальное — локальное: адрес и токен, статусы, служебные поля общей базы).
