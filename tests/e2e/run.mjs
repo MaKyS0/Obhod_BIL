@@ -413,6 +413,7 @@ async function accessSite(sb, { offline = { on: false } } = {}) {
   });
   await context.route('**/script.google.com/**', async (route) => {
     if (offline.on) return route.abort();
+    if (offline.delayMs) await new Promise((r) => setTimeout(r, offline.delayMs)); // медленный скрипт Google
     const req = route.request();
     const cors = { 'access-control-allow-origin': '*' };
     const body = req.method() === 'POST' ? gasCall(sb, 'doPost', { postData: { contents: req.postData() } }) : gasCall(sb, 'doGet', { parameter: Object.fromEntries(new URL(req.url()).searchParams) });
@@ -450,7 +451,8 @@ await scenario('Допуск: запрос → письмо владельцу �
     eq(sb.mails.length, 1, 'повторных писем нет');
 
     // --- владелец: неверный токен, затем верный
-    const o = await site();
+    const slow = { on: false, delayMs: 0 };
+    const o = await site({ offline: slow });
     await o.page.goto(srv.url);
     await o.page.waitForSelector('#ownerLoginBtn');
     await o.page.click('#ownerLoginBtn');
@@ -465,6 +467,14 @@ await scenario('Допуск: запрос → письмо владельцу �
     eq(await o.page.evaluate(() => window.__lyceum.store.state.settings.sheetsUrl), ENDPOINT, 'адрес скрипта проставлен владельцу автоматически');
     await o.page.waitForTimeout(4500); // автосинхронизация стартует через 3 с после открытия
     eq(sb.sheets.has('Ученики'), false, 'пустая база владельца не затёрла таблицу автосинхронизацией');
+    // повторное открытие не ждёт медленный скрипт Google (4 с на ответ): сайт виден сразу, доступ проверяется в фоне
+    slow.delayMs = 4000;
+    const tOpen = Date.now();
+    await o.page.reload();
+    await o.page.waitForSelector('#sidebar', { state: 'visible' });
+    assert(Date.now() - tOpen < 2500, `сайт открылся без ожидания скрипта (${Date.now() - tOpen} мс)`);
+    slow.delayMs = 0;
+    await o.page.waitForFunction(() => document.querySelector('#nav a[data-route=access] .nav-count')?.textContent.trim() === '1', null, { timeout: 15000 });
     await o.page.click('#nav a[data-route=access]');
     await o.page.waitForSelector('tr:has-text("Мария Петрова")');
     assert((await o.page.textContent('tr:has-text("Мария Петрова")')).includes('Воспитатель 8-х классов'), 'сообщение видно владельцу');
@@ -903,13 +913,20 @@ await scenario('Экран загрузки: эмблема БИЛ (птица �
   await p2.mouse.click(300, 300);
   await p2.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 3000 });
   // без нажатия экран уходит сам, не позже ~3 с
-  const p3 = await context.newPage();
+  const ctx3 = await browser.newContext();
+  const p3 = await ctx3.newPage();
   await p3.addInitScript('window.__LYCEUM_ANIMATE__ = true; window.__LYCEUM_ACCESS_ENDPOINT__ = "";');
   const t0 = Date.now();
   await p3.goto(srv.url);
   await p3.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 5000 });
   const took = Date.now() - t0;
   assert(took >= 1500 && took < 4000, `экран показан около 2 с (было ${took} мс)`);
+  // повторное открытие в тот же день — короткий экран
+  const t1 = Date.now();
+  await p3.goto(srv.url + '?again');
+  await p3.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 5000 });
+  assert(Date.now() - t1 < 1500, `в тот же день экран короткий (было ${Date.now() - t1} мс)`);
+  await ctx3.close();
 });
 
 await scenario('Аудит интерфейса: шапка и подвал выровнены, показатели в одну строку, счётчики меню, иконки действий, фильтры в строке поиска', async (page) => {

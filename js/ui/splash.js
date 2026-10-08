@@ -2,8 +2,8 @@
 // Показывается не короче MIN_MS, чтобы анимация успела сыграть; нажатие или клавиша пропускают её. Без анимации (автотесты, «уменьшить движение») скрыт CSS.
 import { animationsOn } from './anim.js';
 
-// Полная анимация — при первом открытии в этой вкладке; при перезагрузках в той же вкладке экран короткий (человек уже его видел).
-const seen = () => { try { const s = sessionStorage.getItem('lyceum-splash') === '1'; sessionStorage.setItem('lyceum-splash', '1'); return s; } catch { return false; } };
+// Полная анимация — раз в сутки на устройстве; при остальных открытиях экран короткий (человек его уже видел сегодня).
+const seen = () => { try { const day = new Date().toDateString(); const s = localStorage.getItem('lyceum-splash') === day; localStorage.setItem('lyceum-splash', day); return s; } catch { return false; } };
 const MIN_MS = (again) => (typeof globalThis.__LYCEUM_SPLASH_MS__ === 'number' ? globalThis.__LYCEUM_SPLASH_MS__ : again ? 700 : 1900);
 
 export function createSplash() {

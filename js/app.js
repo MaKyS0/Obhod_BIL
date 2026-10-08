@@ -24,8 +24,8 @@ import * as search from './pages/search.js';
 import * as accessPage from './pages/access.js';
 import * as rounds from './pages/rounds.js';
 import { accessEndpoint } from './config.js';
-import { runGate, watchAccess } from './ui/gate.js';
-import { listRequests } from './services/access.js';
+import { runGate, watchAccess, knownRole, forgetRole } from './ui/gate.js';
+import { listRequests, verifyOwner, accessStatus } from './services/access.js';
 import { enterPage, countUp } from './ui/anim.js';
 import { THEMES, getPref, cyclePref, onThemeChange } from './ui/theme.js';
 import { icon } from './ui/icons.js';
@@ -96,7 +96,22 @@ async function main() {
   const access = { endpoint, owner: !endpoint, pending: 0, onPending: null };
   let live = null;
   if (endpoint) {
-    const { role } = await runGate({ endpoint, store, repo, db, view, onShown: () => splash.hide() });
+    // Устройство уже допущено и данные на нём есть: открываем сразу, доступ проверяем в фоне (иначе каждое открытие ждёт скрипт Google 4–30 с).
+    const known = knownRole();
+    const token = store.state.settings.sheetsToken;
+    const quick = known && store.state.settings.liveRev != null && (known !== 'owner' || !!token);
+    let role;
+    if (quick) {
+      role = known;
+      (async () => {
+        try {
+          if (known === 'owner') await verifyOwner(endpoint, token);
+          else if ((await accessStatus(endpoint)).status !== 'allowed') throw Object.assign(new Error('closed'), { code: 'auth' });
+        } catch (e) {
+          if (e.code === 'auth') { forgetRole(); location.reload(); } // доступ закрыт — экран допуска сам сотрёт данные
+        } // нет связи — работаем с тем, что на устройстве
+      })();
+    } else ({ role } = await runGate({ endpoint, store, repo, db, view, onShown: () => splash.hide() }));
     access.owner = role === 'owner';
     if (access.owner) document.body.dataset.owner = '1';
     else watchAccess(endpoint);

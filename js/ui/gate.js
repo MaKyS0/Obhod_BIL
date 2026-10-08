@@ -5,6 +5,13 @@ import { toastError } from './toast.js';
 import { logoMark } from './logo.js';
 import { requestAccess, accessStatus, verifyOwner } from '../services/access.js';
 
+// Запоминаем, что это устройство уже допущено: при следующих открытиях сайт показывается сразу (данные уже на устройстве),
+// а доступ перепроверяется в фоне — раньше каждое открытие ждало ответа скрипта Google (от 4 до 30 секунд).
+const ROLE_KEY = 'lyceum-role';
+export function knownRole() { try { const r = localStorage.getItem(ROLE_KEY); return r === 'owner' || r === 'visitor' ? r : null; } catch { return null; } }
+export function rememberRole(role) { try { localStorage.setItem(ROLE_KEY, role); } catch { /* хранилище недоступно — будет обычная проверка */ } }
+export function forgetRole() { try { localStorage.removeItem(ROLE_KEY); } catch { /* ignore */ } }
+
 const pollMs = () => (typeof globalThis.__LYCEUM_POLL_MS__ === 'number' ? globalThis.__LYCEUM_POLL_MS__ : 8000);
 
 /** Возвращает Promise<{ role: 'owner' | 'visitor' }> — разрешается, когда вход разрешён. */
@@ -15,6 +22,7 @@ export function runGate({ endpoint, store, repo, db, view, onShown }) {
     const finish = (role) => {
       clearTimeout(timer);
       document.body.classList.remove('gated');
+      rememberRole(role);
       resolve({ role });
     };
     const show = (...nodes) => { onShown?.(); return view.replaceChildren(h('div', { class: 'gate' }, h('div', { class: 'card gate-card' }, h('div', { class: 'gate-brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, logoMark(30)), h('div', { class: 'brand-text' }, h('strong', null, 'Костанай БИЛ'), h('small', null, 'Информационная система лицея'))), nodes))); };
@@ -80,6 +88,7 @@ export function runGate({ endpoint, store, repo, db, view, onShown }) {
 
     async function showClosed(status) {
       clearTimeout(timer);
+      forgetRole();
       try { await db.wipe?.(); } catch { /* ignore */ }
       show(
         h('h1', null, status === 'revoked' ? 'Доступ отозван' : 'В доступе отказано'),
