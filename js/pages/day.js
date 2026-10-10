@@ -1,6 +1,6 @@
 // Обзор дня (администратор): как прошёл обход — по классам, список учеников со статусами, действия за день; выгрузка в Excel.
 import { h } from '../ui/dom.js';
-import { pageHead, btn, link, notice, emptyState } from '../ui/common.js';
+import { pageHead, btn, link, notice, emptyState, skeleton } from '../ui/common.js';
 import { dataTable } from '../ui/table.js';
 import { field } from '../ui/form.js';
 import { toast, toastError } from '../ui/toast.js';
@@ -151,7 +151,7 @@ export async function render(ctx) {
 
   // ---- действия за день (журнал сервера)
   if (live) {
-    const hist = h('div', { class: 'muted' }, 'Загрузка…');
+    const hist = h('div', null, skeleton(3, 'Загрузка истории'));
     el.append(h('div', { class: 'card flush' }, h('div', { class: 'card-head' }, h('h2', null, 'История действий за день'), link('Весь журнал', `#/admin/logs?date=${ui.date}`, 'sm ghost')), h('div', { class: 'panel-body' }, hist)));
     const from = new Date(`${ui.date}T00:00:00`);
     const to = new Date(from.getTime() + 86400000);

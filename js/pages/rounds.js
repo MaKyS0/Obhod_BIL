@@ -40,6 +40,8 @@ export function render(ctx) {
   const progress = h('div', { class: 'round-progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-label': 'Отмечено учеников' }, bar);
   const stats = h('div', { class: 'round-stats' });
   const notes = h('div', { class: 'round-notes' });
+  // Для скринридера: одно понятное сообщение при каждом изменении счётчиков (а не россыпь голых чисел)
+  const live = h('div', { class: 'sr-only', role: 'status', 'aria-atomic': 'true', id: 'roundLive' });
   const list = h('div', { class: 'round-list' });
 
   const kinds = h('div', { class: 'seg', role: 'group', 'aria-label': 'Вид проверки' }, ROUND_KINDS.map((k) => h('button', {
@@ -61,7 +63,7 @@ export function render(ctx) {
   el.append(head,
     h('div', { class: 'round-bar' }, kinds, clock),
     h('div', { class: 'round-datebar' }, stepBtn(-1, 'Предыдущий день', 'chevron-left'), h('label', { class: 'round-date' }, h('span', { class: 'sr-only' }, 'Дата'), dateInput), stepBtn(1, 'Следующий день', 'chevron-right')),
-    notes, h('div', { class: 'round-sum' }, stats, progress),
+    notes, live, h('div', { class: 'round-sum' }, stats, progress),
     h('div', { class: 'round-find' }, h('div', { class: 'round-search-wrap' }, icon('search', 16), search), chips, copyBtn),
     list);
 
@@ -83,6 +85,7 @@ export function render(ctx) {
     const { totals } = v;
     sub.textContent = `${longDate(ui.date)}${ui.date === today ? '' : ' · прошедший день'}`;
 
+    live.textContent = `Отмечено ${totals.marked} из ${totals.total}. Осталось классов: ${v.classesLeft}. Нет на месте: ${totals.away}.`;
     notes.replaceChildren(
       h('div', { class: 'duty-line' }, h('span', { class: 'k' }, 'Дежурный:'), info.dutyLabel ? h('strong', null, info.dutyLabel) : h('span', { class: 'muted' }, 'не назначен')),
       ...(info.holiday ? [notice('info', info.note ? `В календаре отмечен выходной: ${info.note}. Обход можно проводить как обычно.` : 'В календаре этот день отмечен как выходной. Обход можно проводить как обычно.')] : []));

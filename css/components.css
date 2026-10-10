@@ -273,3 +273,12 @@ textarea { max-width: 100%; }
 }
 @media (min-width: 640px) and (pointer: coarse) { table.data td.actions .btn:has(> .ico) { width: 44px; min-height: 44px; } }
 table.data td:first-of-type a, table.data td.col-check + td a { overflow-wrap: normal; }
+
+/* Заглушка загрузки (скелетон): серые полосы, мягкое мерцание; при «уменьшить движение» и в автотестах — без анимации */
+.skeleton { display: grid; gap: 10px; padding: 4px 0; }
+.sk-line { height: 14px; border-radius: 3px; background: var(--surface-3); animation: sk-pulse 1.4s ease-in-out infinite; }
+@keyframes sk-pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .sk-line { animation: none; } }
+html.no-anim .sk-line { animation: none; }
+/* Цифры одной ширины: столбцы чисел и счётчики не «дрожат» при обновлении */
+table.data td.num, .nav-n, .round-class-count, .summary-line b, .round-clock { font-variant-numeric: tabular-nums; }

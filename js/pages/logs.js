@@ -1,7 +1,7 @@
 // Журнал действий (администратор): вход, запросы доступа, решения, обход, смена статусов, выгрузки, правки данных.
 // Записи пишет только сервер Google, поэтому подделать их с устройства нельзя.
 import { h } from '../ui/dom.js';
-import { pageHead, btn, notice, badge } from '../ui/common.js';
+import { pageHead, btn, notice, badge, skeleton } from '../ui/common.js';
 import { field } from '../ui/form.js';
 import { toastError } from '../ui/toast.js';
 import { parseAuditRow, describeAudit, EVENT_LABELS, EVENT_GROUPS, ROLE_LABEL } from '../domain/audit-view.js';
@@ -45,7 +45,8 @@ export function render(ctx) {
 
   const table = h('table', { class: 'data log', 'aria-label': 'Журнал действий' },
     h('thead', null, h('tr', null, ['Время', 'Кто', 'Событие', 'Что именно'].map((t) => h('th', { scope: 'col' }, t)))), tbody);
-  el.append(h('div', { class: 'card flush' }, h('div', { class: 'table-wrap' }, table), h('div', { class: 'log-foot' }, status, more)));
+  const wait = h('div', { class: 'panel-body' }, skeleton(5, 'Загрузка журнала'));
+  el.append(h('div', { class: 'card flush' }, wait, h('div', { class: 'table-wrap' }, table), h('div', { class: 'log-foot' }, status, more)));
 
   const filter = () => {
     const f = { limit: 100 };
@@ -71,11 +72,12 @@ export function render(ctx) {
   async function load(reset_) {
     const mine = ++seq;
     more.disabled = true;
-    if (reset_) { tbody.replaceChildren(); next = null; rows = 0; status.textContent = 'Загрузка…'; }
+    if (reset_) { tbody.replaceChildren(); next = null; rows = 0; status.textContent = 'Загрузка…'; wait.hidden = false; }
     else status.textContent = 'Загрузка…';
     try {
       const r = await live.request('log', { ...filter(), ...(reset_ || !next ? {} : { before: next }) });
       if (!alive || mine !== seq) return;
+      wait.hidden = true;
       const items = r.rows.map(parseAuditRow);
       tbody.append(...items.map(line));
       rows += items.length;

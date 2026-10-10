@@ -46,6 +46,11 @@ export function demoBadge(rec) {
   return rec && rec.demo ? badge('DEMO', 'demo') : null;
 }
 
+/** Заглушка на время загрузки: серые полосы вместо слова «Загрузка…» (страница не «прыгает», когда придут данные). */
+export function skeleton(rows = 4, label = 'Загрузка') {
+  return h('div', { class: 'skeleton', role: 'status', 'aria-label': label }, Array.from({ length: rows }, (_, i) => h('div', { class: 'sk-line', style: `width:${[92, 78, 86, 64, 80][i % 5]}%` })));
+}
+
 export function emptyState(title, text, actions = [], ic = 'info') {
   return h('div', { class: 'empty' }, h('div', { class: 'empty-ico' }, icon(ic, 20)), h('h3', null, title), text ? h('p', null, text) : null, actions.length ? h('div', { class: 'actions' }, actions) : null);
 }

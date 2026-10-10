@@ -1,7 +1,7 @@
 // Отчёты обхода (администратор): по школе и по классу за выбранный период. Данные считает сервер по истории отметок;
 // выходные дни из календаря не учитываются. Из того же периода можно скачать подробный файл .xlsx.
 import { h } from '../ui/dom.js';
-import { pageHead, btn, notice } from '../ui/common.js';
+import { pageHead, btn, notice, skeleton } from '../ui/common.js';
 import { dataTable } from '../ui/table.js';
 import { field } from '../ui/form.js';
 import { barChart } from '../ui/charts.js';
@@ -71,7 +71,7 @@ export function render(ctx) {
     let rg;
     try { rg = readRange(); } catch (e) { toastError(e); return; }
     const mine = ++seq;
-    body.replaceChildren(h('p', { class: 'loading' }, 'Считаем… Сервер Google может отвечать до полуминуты.'));
+    body.replaceChildren(skeleton(5, 'Считаем отчёт'), h('p', { class: 'meta' }, 'Сервер Google может отвечать до полуминуты.'));
     try {
       const r = await live.request('stats', { ...rg, kind: ui.kind, classId: ui.classId });
       if (!alive || mine !== seq) return;
