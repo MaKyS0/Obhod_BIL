@@ -62,7 +62,9 @@ export function render(ctx) {
         {
           label: 'Сохранить', kind: 'primary',
           run: async () => {
-            const ids = boxes.filter((b) => b.cb.get()).map((b) => b.x.id);
+            const visible = new Set(staff.map((x) => x.id));
+            const kept = [...chosen].filter((id) => !visible.has(id)); // назначенные раньше, но уже в архиве: их не теряем
+            const ids = [...kept, ...boxes.filter((b) => b.cb.get()).map((b) => b.x.id)];
             if (ids.length > DUTY_MAX) { toastError(new Error(`Можно выбрать не больше ${DUTY_MAX} дежурных`)); return false; }
             try { await repo.setDay(date, { holiday: holiday.get(), note: note.get(), dutyStaffIds: ids, dutyText: text.get() }); toast('Сохранено'); ctx.refresh(); } catch (e) { toastError(e); return false; }
             return undefined;

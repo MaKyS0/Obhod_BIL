@@ -87,7 +87,7 @@ export function render(ctx) {
     const here = sum(r.perDay, 1), sick = sum(r.perDay, 2), home = sum(r.perDay, 3), absent = sum(r.perDay, 4);
     const all = here + sick + home + absent;
     const pct = (n) => (all ? `${Math.round((n / all) * 1000) / 10}%` : '—');
-    const className = (id) => (classes.find((c) => c.id === id) || (s.classes || []).find((c) => c.id === id) || { name: id }).name;
+    const className = (id) => !id ? 'Без класса' : (classes.find((c) => c.id === id) || (s.classes || []).find((c) => c.id === id) || { name: id }).name;
     const studentName = (id) => { const x = (s.students || []).find((st) => st.id === id); return x ? fullName(x) : 'Ученик удалён из базы'; };
     const nodes = [];
     nodes.push(h('div', { class: 'summary-line' },

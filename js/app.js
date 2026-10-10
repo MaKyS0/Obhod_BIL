@@ -109,6 +109,8 @@ async function main() {
   // Допуск: если в js/config.js указан адрес скрипта, без решения администратора сайт не открывается.
   // Роль определяет сервер (admin | user); значок роли на устройстве нужен только для быстрого открытия, права он не даёт.
   const endpoint = accessEndpoint();
+  // При смене роли общая база забирается заново: иначе у ставшего дежурным остались бы личные сведения, полученные ранее.
+  const resetJoin = async () => { try { await store.commit({ put: {}, del: {}, settings: { liveRev: null, liveOutbox: [] } }, { system: true }); } catch { /* не критично */ } };
   const access = { endpoint, role: 'admin', admin: true, owner: true, isOwner: !endpoint, pending: 0, onPending: null };
   let live = null;
   if (endpoint) {
@@ -127,7 +129,7 @@ async function main() {
             if (st.status !== 'allowed' || (st.role || 'user') !== known) throw Object.assign(new Error('closed'), { code: 'auth' });
           }
         } catch (e) {
-          if (e.code === 'auth') { forgetRole(); location.reload(); } // доступ закрыт или роль изменена — экран допуска разберётся заново
+          if (e.code === 'auth') { await resetJoin(); forgetRole(); location.reload(); } // доступ закрыт или роль изменена — экран допуска разберётся заново
         } // нет связи — работаем с тем, что на устройстве
       })();
     } else ({ role } = await runGate({ endpoint, store, repo, db, view, onShown: () => splash.hide() }));
@@ -144,7 +146,7 @@ async function main() {
       role,
       canSheets: access.admin,
       onForbidden: () => location.reload(), // доступ закрыт — экран допуска сотрёт локальные данные
-      onRole: () => { forgetRole(); location.reload(); }, // сервер назвал другую роль: перезагрузка соберёт экран заново
+      onRole: async () => { await resetJoin(); forgetRole(); location.reload(); }, // сервер назвал другую роль: перезагрузка соберёт экран заново и заново заберёт базу
       onConflict: () => toast('Часть ваших изменений не применена: те же данные (например, учебный год) успел изменить другой пользователь. Экран обновлён.', 'error'),
     });
     splash.status('Подключаем общую базу…');

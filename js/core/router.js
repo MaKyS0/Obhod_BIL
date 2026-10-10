@@ -3,6 +3,7 @@
 export function createRouter({ view, routes, makeContext, onChange, canEnter = () => true }) {
   let cleanup = null;
   let current = null;
+  let seq = 0;
 
   function parse() {
     const raw = location.hash.replace(/^#/, '') || '/';
@@ -34,6 +35,7 @@ export function createRouter({ view, routes, makeContext, onChange, canEnter = (
   }
 
   async function render() {
+    const mine = ++seq;
     const { path, query } = parse();
     const m = match(path);
     if (typeof cleanup === 'function') {
@@ -52,9 +54,13 @@ export function createRouter({ view, routes, makeContext, onChange, canEnter = (
     current = { name: route.name, path, query, params: m ? m.params : {}, refreshed };
     try {
       const ctx = makeContext({ view, params: current.params, query, route: current });
-      cleanup = (await route.render(ctx)) || null;
+      ctx.stale = () => mine !== seq; // за время ожидания данных открыли другую страницу или обновили эту
+      const result = (await route.render(ctx)) || null;
+      if (mine !== seq) { if (typeof result === 'function') result(); return; }
+      cleanup = result;
     } catch (e) {
       console.error(e);
+      if (mine !== seq) return;
       const box = document.createElement('div');
       box.className = 'notice danger';
       box.textContent = `Ошибка при отображении страницы: ${e.message}`;

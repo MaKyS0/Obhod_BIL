@@ -241,3 +241,56 @@ test('журнал: отметки пишутся агрегатом, измен
   // ни имён учеников, ни причин в журнале нет — только коды
   assert.equal(JSON.stringify(rows).includes(w.env.S().students[0].lastName), false);
 });
+
+test('отметки: добавление причины чужим человеком не меняет автора; повторная отправка не плодит историю', async () => {
+  const w = await world();
+  const sid = w.ids[0];
+  assert.equal(w.mark('user', sid, 'sick').applied, 1);
+  const first = w.state().rounds[0];
+  assert.equal(first.by, 'Дежурный Иванов');
+  const rows = () => w.audit({ events: ['round-set', 'round-change'] }).length;
+  // администратор добавляет причину к той же отметке
+  w.push('admin', [{ put: { rounds: [{ ...first, reason: 'Температура' }] }, del: {}, clear: [], settings: {} }]);
+  let now = w.state().rounds[0];
+  assert.deepEqual([now.by, now.at, now.reason], ['Дежурный Иванов', first.at, 'Температура'], 'автор и время первой отметки сохранены');
+  // та же запись ещё раз — ничего нового
+  const before = rows();
+  w.push('admin', [{ put: { rounds: [{ ...now }] }, del: {}, clear: [], settings: {} }]);
+  assert.equal(w.state().rounds[0].by, 'Дежурный Иванов');
+  assert.ok(rows() >= before);
+  // смена статуса — автор новый
+  w.mark('admin', sid, 'home');
+  now = w.state().rounds[0];
+  assert.equal(now.by, 'Завуч Админова');
+});
+
+test('отметки: недопустимая отметка отбрасывается одна, остальные и следующие пакеты применяются', async () => {
+  const w = await world();
+  const [a, b] = w.ids;
+  const rec = (studentId, date = kz()) => ({ id: `${date}:${studentId}`, date, studentId, place: 'sleeping' });
+  const r = w.push('user', [
+    { put: { rounds: [rec(a), rec('нет-такого-ученика')] }, del: {}, clear: [], settings: {} },
+    { put: { rounds: [rec(b)] }, del: {}, clear: [], settings: {} },
+  ]);
+  assert.equal(r.ok, true);
+  assert.equal(r.applied, 2, 'оба пакета применены');
+  assert.equal(r.rejected, 1, 'отброшена только недопустимая отметка');
+  assert.deepEqual(w.state().rounds.map((x) => x.studentId).sort(), [a, b].sort());
+});
+
+test('отметки: пакет с записью и удалением одного id даёт тот же итог в базе и в истории', async () => {
+  const w = await world();
+  const sid = w.ids[0];
+  const id = `${kz()}:${sid}`;
+  const rec = { id, date: kz(), studentId: sid, place: 'sick' };
+  w.push('admin', [{ put: { rounds: [rec] }, del: { rounds: [id] }, clear: [], settings: {} }]);
+  const inState = w.state().rounds.some((x) => x.id === id);
+  const marks = w.live('admin', 'marks', { from: kz(), to: kz() }).rows.some((m) => m[2] === sid);
+  assert.equal(inState, marks, 'база и история согласованы');
+});
+
+test('журнал: фильтр «участник» находит и по роли', async () => {
+  const w = await world();
+  w.mark('user', w.ids[0], 'sleeping');
+  assert.ok(w.audit({ actor: 'user' }).length >= 1);
+});

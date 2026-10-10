@@ -42,7 +42,7 @@ export async function render(ctx) {
       } catch (e) { problem = `Не удалось получить историю: ${e.message}`; }
     }
   }
-  if (!alive) return undefined;
+  if (ctx.stale()) return undefined;
   const v = roundView(s, ui.date, ui.kind, records || (fresh ? null : []));
   const info = dayInfo(s, ui.date);
 

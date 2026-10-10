@@ -45,6 +45,7 @@ var KINDS_ = ['evening', 'morning', 'extra'];
 var ROUND_KEEP_ = { evening: 3, morning: 2, extra: 2 }; // сколько дней отметки лежат в общей базе (дальше — только в истории)
 var MAX_RANGE_DAYS_ = 400;
 var MAX_MARK_ROWS_ = 20000;
+var MAX_STAT_ROWS_ = 150000; // для сводки строки не отдаются на устройство, поэтому предел выше
 
 // ---------------------------------------------------------------- установка
 
@@ -221,7 +222,7 @@ function handleAccess_(p) {
         stale.map(function (r) { return r.row; }).sort(function (a, b) { return b - a; }).forEach(function (n) { sh.deleteRow(n); });
       }
       var note = cleanText_(p.note, 300);
-      sh.appendRow([hash, name, note, 'pending', now, '', now, '', email, wantRole]);
+      appendText_(sh, [hash, name, note, 'pending', now, '', now, '', email, wantRole]);
       dropAclCache_();
       audit_('access-request', { name: name, role: '', id: hash.substring(0, 12) }, name, { wantRole: wantRole, email: email ? 'указан' : '' });
       notifyOwner_(name, note, hash, email, wantRole);
@@ -592,14 +593,19 @@ function staleRoundDels_(b, today) {
   return n;
 }
 
-/** Отметки только на существующих учеников и только в окне [сегодня − (хранение − 1) … завтра]. */
-function roundsAllowed_(b, students, today) {
-  var ok = true;
-  (b.put.rounds || []).forEach(function (r) {
-    if (!students['k' + r.studentId]) ok = false;
-    if (!roundFresh_(r.date, kindOfRec_(r), today) || dayDiff_(today, r.date) > 1) ok = false;
+/**
+ * Отметки только на существующих учеников и только в окне [сегодня − (хранение − 1) … завтра].
+ * Недопустимые отметки (ученика уже нет, дата вышла из окна) отбрасываются по одной — остальные в пакете (и остальные пакеты) применяются.
+ * Возвращает, сколько отброшено.
+ */
+function dropBadRounds_(b, students, today) {
+  var list = b.put.rounds || [];
+  var good = list.filter(function (r) {
+    return students['k' + r.studentId] && roundFresh_(r.date, kindOfRec_(r), today) && dayDiff_(today, r.date) <= 1;
   });
-  return ok;
+  var dropped = list.length - good.length;
+  if (dropped) { b.put.rounds = good; b.puts -= dropped; }
+  return dropped;
 }
 
 /** Время отметки с устройства допустимо в пределах [сейчас − 72 ч; сейчас + 5 мин], иначе ставится серверное. */
@@ -618,22 +624,7 @@ function stampAndTrack_(b, who, today, nowMs, nowIso, idx, acc) {
     var key = date + '|' + kind;
     return acc.sets[key] || (acc.sets[key] = { date: date, kind: kind, set: 0, changed: 0, cleared: 0, reasons: 0, classes: {} });
   };
-  (b.put.rounds || []).forEach(function (r) {
-    var kind = kindOfRec_(r);
-    r.by = who.name;
-    r.at = clampAt_(r.at || r.updatedAt, nowMs, nowIso);
-    var prev = idx['k' + r.id];
-    var g = group(r.date, kind);
-    if (!prev) g.set++;
-    else if (prev.place !== r.place) {
-      g.changed++;
-      if (acc.changes.length < 20) acc.changes.push({ date: r.date, kind: kind, studentId: r.studentId, from: prev.place, to: r.place });
-    } else if (String(prev.reason || '') !== String(r.reason || '')) g.reasons++;
-    if (r.classId) g.classes[r.classId] = 1;
-    acc.marks.push([nowIso, r.date, kind, r.studentId, r.classId || '', r.place, r.reason || '', who.name, who.role, who.id, r.at]);
-    idx['k' + r.id] = r;
-    acc.patched['k' + r.id] = r;
-  });
+  // Сначала удаления, потом записи — так же, как applyChanges_, чтобы история и база не расходились.
   (b.del.rounds || []).forEach(function (id) {
     var info = parseRoundId_(id);
     var prev = idx['k' + id];
@@ -643,6 +634,30 @@ function stampAndTrack_(b, who, today, nowMs, nowIso, idx, acc) {
     }
     delete idx['k' + id];
     delete acc.patched['k' + id];
+  });
+  (b.put.rounds || []).forEach(function (r) {
+    var kind = kindOfRec_(r);
+    var prev = idx['k' + r.id];
+    if (prev && prev.place === r.place) {
+      // Тот же статус (например, добавлена причина или запись отправлена повторно): автор и время первой отметки остаются.
+      r.by = prev.by || who.name;
+      r.at = prev.at || clampAt_(r.at || r.updatedAt, nowMs, nowIso);
+    } else {
+      r.by = who.name;
+      r.at = clampAt_(r.at || r.updatedAt, nowMs, nowIso);
+    }
+    var g = group(r.date, kind);
+    var changed = true;
+    if (!prev) g.set++;
+    else if (prev.place !== r.place) {
+      g.changed++;
+      if (acc.changes.length < 20) acc.changes.push({ date: r.date, kind: kind, studentId: r.studentId, from: prev.place, to: r.place });
+    } else if (String(prev.reason || '') !== String(r.reason || '')) g.reasons++;
+    else changed = false;
+    if (r.classId) g.classes[r.classId] = 1;
+    if (changed) acc.marks.push([nowIso, r.date, kind, r.studentId, r.classId || '', r.place, r.reason || '', r.by, who.role, who.id, r.at]);
+    idx['k' + r.id] = r;
+    acc.patched['k' + r.id] = r;
   });
 }
 
@@ -695,7 +710,7 @@ function finalMarks_(from, to, f) {
         if (f.studentId && String(r[3]) !== f.studentId) continue;
         if (f.by && String(r[7]) !== f.by) continue;
         out.push({ date: date, kind: kind, studentId: String(r[3]), classId: String(r[4]), place: String(r[5]), reason: String(r[6]), by: String(r[7]), at: String(r[10]) });
-        if (out.length > MAX_MARK_ROWS_) return { tooMany: true, list: [] };
+        if (out.length > (f.cap || MAX_MARK_ROWS_)) return { tooMany: true, list: [] };
       }
       if (String(block[0][0]).substring(0, 10) < floorAt) done = true;
       pos = start - 1;
@@ -731,7 +746,7 @@ function readAudit_(f) {
       if (fromAt && at < fromAt) { return { rows: rows, next: null }; } // дальше — только более давние записи
       if (toAt && at > toAt) continue;
       if (events && events.indexOf(String(r[1])) < 0) continue;
-      if (actor && String(r[2]).toLowerCase().indexOf(actor) < 0 && String(r[4]).toLowerCase().indexOf(actor) < 0) continue;
+      if (actor && String(r[2]).toLowerCase().indexOf(actor) < 0 && String(r[3]).toLowerCase().indexOf(actor) < 0 && String(r[4]).toLowerCase().indexOf(actor) < 0) continue;
       if (target && String(r[5]).toLowerCase().indexOf(target) < 0 && String(r[6]).toLowerCase().indexOf(target) < 0) continue;
       rows.push([start + i, at, String(r[1]), String(r[2]), String(r[3]), String(r[4]), String(r[5]), String(r[6])]);
     }
@@ -745,7 +760,7 @@ function statsFor_(p) {
   var rg = rangeOf_(p);
   if (rg.error) return { ok: false, error: rg.error };
   var kind = KINDS_.indexOf(p.kind) >= 0 ? p.kind : 'evening';
-  var res = finalMarks_(rg.from, rg.to, { kind: kind, classId: p.classId ? String(p.classId) : '' });
+  var res = finalMarks_(rg.from, rg.to, { kind: kind, classId: p.classId ? String(p.classId) : '', cap: MAX_STAT_ROWS_ });
   if (res.tooMany) return { ok: false, error: 'too-many' };
   var ss = openSpreadsheet_();
   var holidays = {};
@@ -861,7 +876,7 @@ function handleLive_(p) {
         if (!who.owner && (b.clear.length || b.dels - stale > VISITOR_MAX_DELETE_)) { rejected++; stop = true; return; }
         // Пользователь (дежурный) меняет только отметки обхода: ни базу, ни настройки.
         if (!isAdmin && nonRoundOps_(b)) { rejected++; stop = true; return; }
-        if (!roundsAllowed_(b, students, today)) { rejected++; stop = true; return; }
+        if (dropBadRounds_(b, students, today)) rejected++;
         // Смена учебного года (и отмена перехода) выполняется только над тем годом, который видел автор.
         if (raw.expect && state.settings.currentYearId !== raw.expect) { rejected++; stop = true; return; }
         if (b.clear.length || b.dels - staleRoundDels_(b, today) >= BIG_DELETE_) big = true;
@@ -1063,6 +1078,13 @@ function json_(obj) {
 }
 
 /** Перезаписывает лист целиком: заголовок + строки, одним вызовом setValues. */
+/** Строка в конец листа как обычный текст: введённое посетителем («=IMAGE(…)») не станет формулой. */
+function appendText_(sh, row) {
+  var range = sh.getRange(sh.getLastRow() + 1, 1, 1, row.length);
+  range.setNumberFormat('@');
+  range.setValues([row.map(function (v) { return v instanceof Date ? v.toISOString() : v; })]);
+}
+
 function writeSheet_(ss, name, header, rows) {
   var sh = ss.getSheetByName(name) || ss.insertSheet(name);
   sh.clearContents();
@@ -1098,7 +1120,7 @@ function writeBackup_(ss, text) {
 
 function appendLog_(ss, cells) {
   var sh = ss.getSheetByName(LOG_SHEET_) || ss.insertSheet(LOG_SHEET_);
-  sh.appendRow([new Date()].concat(cells));
+  appendText_(sh, [new Date()].concat(cells));
   if (sh.getLastRow() > 1000) sh.deleteRows(1, sh.getLastRow() - 1000);
   if (!sh.isSheetHidden()) sh.hideSheet();
 }
