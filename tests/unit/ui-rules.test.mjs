@@ -81,3 +81,15 @@ test('контраст: приглушённые цвета текста про�
   for (const [name, set] of [['светлая', base], ['тёмная', dark]]) for (const [fg, bg] of pairs) if (ratio(set[fg], set[bg]) < 4.5) low.push(`${name}: --${fg} на --${bg} = ${ratio(set[fg], set[bg]).toFixed(2)}`);
   assert.deepEqual(low, []);
 });
+
+test('CSP: манифест приложения разрешён (иначе установка на телефон блокируется), опасное запрещено', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  const csp = html.match(/Content-Security-Policy" content="([^"]*)"/)[1];
+  assert.match(csp, /manifest-src 'self'/);
+  assert.match(csp, /script-src 'self'(;|$)/, 'скрипты только свои, без unsafe-inline/eval');
+  assert.match(csp, /object-src 'none'/);
+  assert.match(csp, /form-action 'none'/);
+  assert.doesNotMatch(csp, /unsafe-eval|script-src[^;]*unsafe-inline/);
+  assert.ok(fs.existsSync(new URL('../../manifest.webmanifest', import.meta.url)));
+});
