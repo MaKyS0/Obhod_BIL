@@ -145,12 +145,15 @@ export function render(ctx) {
   function classSection(g, rows) {
     const opened = ui.filter === 'away' || ui.open.has(g.id);
     const meta = [g.room ? `каб. ${g.room}` : '', g.tutor ? `воспитатель ${shortName(g.tutor)}` : '', g.teacher ? `кл. рук. ${shortName(g.teacher)}` : ''].filter(Boolean);
+    const copyN = copyPlan(ctx.state, shiftDate(ui.date, -1), ui.date, ui.kind, g.id).length;
     const head = h('button', { type: 'button', class: 'round-head', 'aria-expanded': opened ? 'true' : 'false', 'data-class': g.id, onclick: () => { if (ui.open.has(g.id)) ui.open.delete(g.id); else { ui.open.add(g.id); ui.fx.open = g.id; } draw(); } },
       h('span', { class: 'round-class-name' }, g.name, g.done ? icon('check', 18) : null),
       h('span', { class: 'round-class-meta' }, meta.length ? meta.join(' · ') : h('span', { class: 'muted' }, g.done ? 'готово' : '')),
       h('span', { class: 'round-class-count' }, `${g.marked}/${g.total}`),
       h('span', { class: 'round-chevron', 'aria-hidden': 'true' }, icon(opened ? 'chevron-up' : 'chevron-down', 18)));
-    const sec = h('section', { class: `round-class${ui.fx.done === g.id ? ' just-done' : ''}`, 'data-done': g.done ? 'true' : 'false', 'data-class': g.id }, head);
+    // Кнопка рядом с заголовком класса (не внутри него): доступна и у свёрнутого класса
+    const copy = copyN ? btn('Как вчера', () => copyFromPrev(g), 'sm', { icon: 'undo', 'data-copy': g.id, title: `Заполнить класс ${g.name} как ${ui.date === today ? 'вчера' : 'за предыдущий день'}: неотмеченных ${copyN}`, 'aria-label': `Заполнить класс ${g.name} как вчера: неотмеченных ${copyN}` }) : null;
+    const sec = h('section', { class: `round-class${ui.fx.done === g.id ? ' just-done' : ''}`, 'data-done': g.done ? 'true' : 'false', 'data-class': g.id }, h('div', { class: 'round-head-row' }, head, copy));
     if (!opened) return sec;
 
     const rest = g.students.filter((x) => !x.place).map((x) => x.student.id);
@@ -226,21 +229,21 @@ export function render(ctx) {
   }
 
   // Копия вчерашнего обхода неотмеченным: показываем, что именно будет поставлено, и просим подтвердить.
-  async function copyFromPrev() {
+  async function copyFromPrev(g = null) {
     const prevDate = shiftDate(ui.date, -1);
-    const plan = copyPlan(ctx.state, prevDate, ui.date, ui.kind);
+    const plan = copyPlan(ctx.state, prevDate, ui.date, ui.kind, g ? g.id : null);
     if (!plan.length) return;
     const by = {};
     for (const p of plan) by[p.place] = (by[p.place] || 0) + 1;
     const ok = await confirmAction({
-      title: 'Заполнить как вчера',
-      message: `Неотмеченным ученикам (${plan.length}) будет поставлен тот же статус, что и ${ui.date === today ? 'вчера' : `за ${formatDate(prevDate)}`}. Уже отмеченные не изменятся.`,
+      title: g ? `Класс ${g.name}: как вчера` : 'Заполнить как вчера',
+      message: `Неотмеченным ученикам${g ? ` класса ${g.name}` : ''} (${plan.length}) будет поставлен тот же статус, что и ${ui.date === today ? 'вчера' : `за ${formatDate(prevDate)}`}. Уже отмеченные не изменятся.`,
       details: ROUND_PLACES.filter((p) => by[p.key]).map((p) => `${p.label}: ${by[p.key]}`),
       confirmLabel: `Заполнить: ${plan.length}`, kind: 'primary',
     });
     if (!ok) return;
     try {
-      const n = await repo.copyRounds(prevDate, ui.date, { kind: ui.kind, by: myName() });
+      const n = await repo.copyRounds(prevDate, ui.date, { kind: ui.kind, by: myName(), classId: g ? g.id : null });
       toast(`Отмечено учеников: ${n}`);
     } catch (e) { toastError(e); }
     draw();

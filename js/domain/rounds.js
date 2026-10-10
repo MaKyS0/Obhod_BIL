@@ -50,13 +50,14 @@ export const earliestRoundDate = (today, kind = 'evening') => shiftDate(today, -
 
 /**
  * «Заполнить как вчера»: кому из неотмеченных на дату `to` можно поставить статус (и причину) отметки за дату `from` того же вида проверки.
- * Возвращает [{ studentId, classId, place, reason }].
+ * classId — только один класс (по умолчанию все). Возвращает [{ studentId, classId, place, reason }].
  */
-export function copyPlan(state, from, to, kind = 'evening') {
+export function copyPlan(state, from, to, kind = 'evening', classId = null) {
   const src = new Map();
   for (const g of roundView(state, from, kind).groups) for (const x of g.students) if (x.place) src.set(x.student.id, x);
   const plan = [];
   for (const g of roundView(state, to, kind).groups) for (const x of g.students) {
+    if (classId && g.id !== classId) continue;
     const prev = src.get(x.student.id);
     if (!x.place && prev) plan.push({ studentId: x.student.id, classId: g.id === '_none' ? null : g.id, place: prev.place, reason: isHere(prev.place) ? '' : prev.reason });
   }

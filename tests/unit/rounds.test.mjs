@@ -224,7 +224,10 @@ test('«заполнить как вчера»: неотмеченным ста�
   await env.repo.setRound(d, yest, 'sleeping');
   assert.equal(copyPlan(env.S(), yest, today).length, 3);
   assert.equal(copyPlan(env.S(), yest, today, 'morning').length, 0, 'утренняя проверка вчера пуста');
-  assert.equal(await env.repo.copyRounds(yest, today, { by: 'Анна' }), 3);
+  const other = roundView(env.S(), today).groups[1].id;
+  assert.equal(copyPlan(env.S(), yest, today, 'evening', other).length, 0, 'в другом классе вчера не было отметок');
+  assert.equal(await env.repo.copyRounds(yest, today, { by: 'Анна', classId: other }), 0);
+  assert.equal(await env.repo.copyRounds(yest, today, { by: 'Анна', classId: roundView(env.S(), today).groups[0].id }), 3);
   const v = roundView(env.S(), today);
   const st = Object.fromEntries(v.groups[0].students.map((x) => [x.student.id, x]));
   assert.equal(st[a].place, 'sleeping');

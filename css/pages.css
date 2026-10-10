@@ -163,6 +163,9 @@ details.class-block .inner { padding: 4px 14px 12px; }
 .round-class { border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-3); overflow: clip; } /* clip, не hidden: иначе «Всем неотмеченным» не липнет к нижнему краю */
 .round-class[data-done="true"] { border-color: var(--success-line); background: var(--success-weak); }
 .round-class.found { background: var(--surface); }
+.round-head-row { display: flex; align-items: center; gap: 6px; padding-right: 8px; }
+.round-head-row .round-head { flex: 1; min-width: 0; }
+.round-head-row > .btn { flex: none; }
 .round-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; padding: 8px 14px; border: 0; background: transparent; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .round-class-name { font-size: 19px; font-weight: 650; min-width: 3.2ch; display: inline-flex; align-items: center; gap: 6px; }
 .round-class-name .ico { color: var(--success); }

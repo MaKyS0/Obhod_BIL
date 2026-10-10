@@ -382,11 +382,11 @@ export function createRepo(store) {
     },
 
     // «Заполнить как вчера»: неотмеченным на дату `to` ставится статус (и причина) за дату `from`; уже отмеченные не меняются. Возвращает, сколько отмечено.
-    async copyRounds(from, to, { kind = 'evening', by = '' } = {}) {
+    async copyRounds(from, to, { kind = 'evening', by = '', classId = null } = {}) {
       if (!isKind(kind)) throw new UserError('Неизвестный вид проверки');
       const today = todayISO();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(to) || to > today || to < earliestRoundDate(today, kind)) throw new UserError('Отметить можно только сегодняшний обход и два предыдущих дня');
-      const plan = copyPlan(S(), from, to, kind);
+      const plan = copyPlan(S(), from, to, kind, classId);
       if (!plan.length) return 0;
       const changes = emptyChanges();
       const now = nowISO();

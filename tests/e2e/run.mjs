@@ -921,17 +921,26 @@ await scenario('Обход (телефон 375×812): главная стран�
     const { repo, store } = window.__lyceum;
     const t = new Date(); t.setDate(t.getDate() - 1);
     const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
-    const ids = store.state.enrollments.filter((e) => e.classId === '2026-2027:7C').map((e) => e.studentId);
+    const ids = store.state.enrollments.filter((e) => ['2026-2027:7C', '2026-2027:8A'].includes(e.classId)).map((e) => e.studentId);
     await repo.setRounds(ids, iso, 'sleeping');
   });
   await page.reload();
   await page.waitForSelector('section.round-class');
   eq(await page.locator('#copyPrevBtn').isEnabled(), true, 'кнопка «Заполнить как вчера» доступна');
-  await page.click('#copyPrevBtn');
-  assert((await modal(page).textContent()).includes('Ночует'), 'в окне видно, какие статусы будут поставлены');
+  // персонально для класса: только 7C
+  await page.click('[data-copy="2026-2027:7C"]');
+  assert((await modal(page).textContent()).includes('класса 7C'), 'в окне назван класс');
   await modal(page).locator('button:has-text("Заполнить:")').click();
   await page.waitForSelector('section[data-class="2026-2027:7C"][data-done="true"]');
   eq(await page.locator('section.round-class[data-done="true"]').count(), 3, 'класс 7C заполнен как вчера');
+  eq(await page.locator('section[data-class="2026-2027:8A"][data-done="true"]').count(), 0, 'другие классы не тронуты');
+  eq(await page.locator('[data-copy="2026-2027:7C"]').count(), 0, 'у заполненного класса кнопки больше нет');
+  // для всех сразу
+  await page.click('#copyPrevBtn');
+  assert((await modal(page).textContent()).includes('Ночует'), 'в окне видно, какие статусы будут поставлены');
+  await modal(page).locator('button:has-text("Заполнить:")').click();
+  await page.waitForSelector('section[data-class="2026-2027:8A"][data-done="true"]');
+  eq(await page.locator('section.round-class[data-done="true"]').count(), 4, 'остальные заполнены разом');
   eq(await page.locator('#copyPrevBtn').isDisabled(), true, 'копировать больше нечего');
   // утренняя проверка — отдельный список, вечерние отметки не затрагивает
   await page.click('.seg [data-kind=morning]');
