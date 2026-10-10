@@ -19,7 +19,7 @@ jobs:
       - name: Collect site files (no tests/tools)
         run: |
           mkdir _site
-          cp -R index.html css js data assets vendor google-apps-script _site/
+          cp -R index.html manifest.webmanifest css js data assets vendor google-apps-script _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

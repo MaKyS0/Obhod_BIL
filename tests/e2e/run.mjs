@@ -699,6 +699,54 @@ await scenario('Роли: запрос → ACCEPT/REJECT → дежурный о
   }
 });
 
+await scenario('Повторное открытие: дежурный и устройство-администратор открываются с первого раза и не перезагружаются сами', async () => {
+  const sb = makeSandbox();
+  const token = gasRun(sb, 'setup()');
+  const opened = [];
+  const site = async (o) => { const x = await accessSite(sb, o); opened.push(x); return x; };
+  try {
+    const o = await site();
+    await o.page.goto(srv.url);
+    await o.page.click('#ownerLoginBtn');
+    await o.page.fill('input[name=ownerToken]', token);
+    await o.page.click('#ownerLoginSubmit');
+    await o.page.waitForSelector('#sidebar', { state: 'visible' });
+    await go(o.page, '#/settings');
+    await o.page.click('#loadDemoBtn');
+    await o.page.waitForFunction(() => window.__lyceum.store.state.students.length > 300 && window.__lyceum.store.state.settings.liveOutbox.length === 0);
+    const join = async (name, act) => {
+      const x = await site();
+      await x.page.goto(srv.url);
+      await x.page.fill('input[name=visitorName]', name);
+      await x.page.click('#requestAccessBtn');
+      await x.page.waitForSelector('h1:has-text("Запрос отправлен")');
+      await go(o.page, '#/access');
+      await o.page.click('#accessRefresh');
+      await o.page.click(`tr:has-text("${name}") [data-act=${act}]`);
+      await x.page.waitForSelector('#sidebar', { state: 'visible' });
+      await x.page.waitForFunction(() => window.__lyceum && window.__lyceum.store.state.students.length > 300);
+      return x;
+    };
+    for (const [name, act, role] of [['Дежурный Первый', 'allow', 'user'], ['Админ Устройство', 'allow-admin', 'admin']]) {
+      const x = await join(name, act);
+      let navs = 0;
+      x.page.on('framenavigated', (f) => { if (f === x.page.mainFrame()) navs++; });
+      for (let i = 0; i < 3; i++) {
+        await x.page.reload();
+        await x.page.waitForSelector('section.round-class');
+        await x.page.waitForTimeout(2500); // фоновая проверка доступа и общая база успевают отработать
+      }
+      eq(navs, 3, `${name}: только свои перезагрузки, сайт сам себя не обновляет (${navs})`);
+      eq(await x.page.evaluate(() => document.body.dataset.role), role, `${name}: роль ${role}`);
+      assert(await x.page.locator('section.round-class').count() > 10, `${name}: обход на месте`);
+    }
+    const all = opened.flatMap((x) => x.errors);
+    if (all.length) throw new Error(`Ошибки в консоли браузера:\n  ${all.join('\n  ')}`);
+  } finally {
+    for (const x of opened) await x.context.close();
+  }
+});
+
 await scenario('Общая база: два устройства видят одни данные, правки доходят без перезагрузки, ввод не прерывается, отзыв закрывает доступ', async () => {
   const sb = makeSandbox();
   const token = gasRun(sb, 'setup()');
@@ -806,6 +854,22 @@ await scenario('Обход (телефон 375×812): главная стран�
   eq((await page.textContent('#roundLeft')).trim(), '15', 'осталось классов: 15');
   assert((await page.textContent('.duty-line')).includes('не назначен'), 'дежурный не назначен');
   assert(await page.locator('.seg [data-kind=morning]').count() === 1, 'есть переключатель вида проверки');
+
+  // шапка на телефоне — одна строка; поиск прячется за лупой
+  const topH = await page.$eval('.topbar', (e) => e.getBoundingClientRect().height);
+  assert(topH <= 64, `шапка на телефоне компактная (${topH}px)`);
+  assert(!(await page.locator('#globalSearch').isVisible()), 'поле поиска скрыто до нажатия на лупу');
+  await page.click('#searchToggle');
+  assert(await page.locator('#globalSearch').isVisible(), 'лупа открывает поиск');
+  await page.click('#searchToggle');
+  assert(!(await page.locator('#globalSearch').isVisible()), 'повторное нажатие закрывает поиск');
+  // листание дней кнопками
+  eq(await page.locator('[data-step="1"]').isDisabled(), true, 'вперёд от сегодня нельзя');
+  await page.click('[data-step="-1"]');
+  await page.waitForSelector('.pagehead .sub:not(:has-text("Вечерний"))');
+  assert((await page.textContent('.pagehead .sub')).includes('прошедший день'), 'открыт предыдущий день');
+  await page.click('[data-step="1"]');
+  await page.waitForFunction(() => !document.querySelector('.pagehead .sub').textContent.includes('прошедший'));
 
   // раскрыть 7A, проверить удобство на телефоне
   await page.click('button.round-head[data-class="2026-2027:7A"]');

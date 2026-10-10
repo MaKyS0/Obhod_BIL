@@ -208,7 +208,8 @@ dialog.modal form { display: flex; flex-direction: column; min-height: 0; flex: 
 .toast.error .ico { color: #ff9a90; }
 .toast button { pointer-events: auto; display: inline-grid; place-items: center; background: none; border: 0; color: #aab6c5; cursor: pointer; padding: 1px; border-radius: 3px; }
 .toast button:hover { color: #fff; background: rgba(255,255,255,.1); }
-@media (max-width: 639px) { .toasts { left: 12px; right: 12px; bottom: 12px; max-width: none; } }
+/* Телефон: уведомления сверху, чтобы не закрывать кнопки внизу экрана (например, «Всем неотмеченным») */
+@media (max-width: 639px) { .toasts { left: 12px; right: 12px; top: max(8px, env(safe-area-inset-top)); bottom: auto; max-width: none; flex-direction: column-reverse; } }
 
 /* ---------- Баннеры, подсказки ---------- */
 .banner, .notice { display: block; padding: 9px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); font-size: 13.5px; color: var(--text); }

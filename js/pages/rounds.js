@@ -52,9 +52,15 @@ export function render(ctx) {
     type: 'button', 'data-filter': f.key, 'aria-pressed': ui.filter === f.key ? 'true' : 'false',
     onclick: () => { ui.filter = f.key; for (const b of chips.children) b.setAttribute('aria-pressed', b.dataset.filter === f.key ? 'true' : 'false'); draw(); },
   }, f.label)));
+  // Листание дней кнопками: на телефоне это быстрее, чем календарь браузера
+  const stepBtn = (days, label, ic) => {
+    const to = shiftDate(ui.date, days);
+    return btn('', () => { ui.date = to; ctx.refresh(); }, 'ghost', { icon: ic, 'aria-label': label, title: label, disabled: to < min || to > today, 'data-step': String(days) });
+  };
   const copyBtn = btn('Заполнить как вчера', () => copyFromPrev(), '', { icon: 'undo', id: 'copyPrevBtn' });
   el.append(head,
-    h('div', { class: 'round-bar' }, kinds, h('label', { class: 'round-date' }, h('span', { class: 'sr-only' }, 'Дата'), dateInput), clock),
+    h('div', { class: 'round-bar' }, kinds, clock),
+    h('div', { class: 'round-datebar' }, stepBtn(-1, 'Предыдущий день', 'chevron-left'), h('label', { class: 'round-date' }, h('span', { class: 'sr-only' }, 'Дата'), dateInput), stepBtn(1, 'Следующий день', 'chevron-right')),
     notes, h('div', { class: 'round-sum' }, stats, progress),
     h('div', { class: 'round-find' }, h('div', { class: 'round-search-wrap' }, icon('search', 16), search), chips, copyBtn),
     list);
@@ -91,12 +97,14 @@ export function render(ctx) {
       return h('b', { class: changed ? 'bump' : null, id }, String(value));
     };
     stats.replaceChildren(
-      h('span', null, 'Осталось классов: ', num('left', v.classesLeft, 'roundLeft'), ` из ${v.groups.length}`),
-      h('span', null, 'Отмечено: ', num('marked', totals.marked, 'roundMarked'), ` из ${totals.total}`),
-      h('span', { class: 'rs-away' }, 'Нет на месте: ', num('away', totals.away, 'roundAway')),
-      ...ROUND_PLACES.filter((p) => !isHere(p.key)).map((p) => h('span', { class: `rc rc-${p.key}` }, `${p.label}: `, num(p.key, totals.byPlace[p.key]))),
-      h('span', { class: 'rc rc-sleeping' }, `${ROUND_LABEL.sleeping}: `, num('sleeping', totals.byPlace.sleeping)),
-      h('span', { class: 'rc rc-none' }, 'Не отмечено: ', num('none', totals.total - totals.marked, 'roundUnmarked')));
+      h('div', { class: 'rs-main' },
+        h('span', null, 'Осталось классов: ', num('left', v.classesLeft, 'roundLeft'), ` из ${v.groups.length}`),
+        h('span', null, 'Отмечено: ', num('marked', totals.marked, 'roundMarked'), ` из ${totals.total}`),
+        h('span', { class: 'rs-away' }, 'Нет на месте: ', num('away', totals.away, 'roundAway'))),
+      h('div', { class: 'rs-badges' },
+        ...ROUND_PLACES.filter((p) => !isHere(p.key)).map((p) => h('span', { class: `rc rc-${p.key}` }, `${p.label}: `, num(p.key, totals.byPlace[p.key]))),
+        h('span', { class: 'rc rc-sleeping' }, `${ROUND_LABEL.sleeping}: `, num('sleeping', totals.byPlace.sleeping)),
+        h('span', { class: 'rc rc-none' }, 'Не отмечено: ', num('none', totals.total - totals.marked, 'roundUnmarked'))));
 
     // «Заполнить как вчера»: доступно, если за предыдущий день есть отметки для ещё неотмеченных учеников
     const prevDate = shiftDate(ui.date, -1);

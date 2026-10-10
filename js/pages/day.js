@@ -101,9 +101,19 @@ export async function render(ctx) {
   const rows = groups.map((g) => ({ g, last: last(g) }));
   const sum = (f) => groups.reduce((n, g) => n + f(g), 0);
   rows.push({ total: true, g: { name: 'Итого', total: sum((g) => g.total), marked: sum((g) => g.marked), cnt: (k) => sum((g) => cnt(g, k)) } });
-  el.append(h('div', { class: 'card flush' }, h('div', { class: 'card-head' }, h('h2', null, 'По классам')),
+  // На телефоне вместо широкой таблицы — компактный список: класс, отмечено, у кого не всё в порядке
+  const lines = h('ul', { class: 'class-lines', 'aria-label': 'Обход по классам' }, rows.map((r) => {
+    const g = r.g;
+    const count = (k) => (r.total ? g.cnt(k) : cnt(g, k));
+    const pills = [h('span', { class: 'pill ok' }, `Ночует ${count('sleeping')}`), ...ROUND_PLACES.filter((p) => p.key !== 'sleeping' && count(p.key)).map((p) => h('span', { class: 'pill bad' }, `${p.label} ${count(p.key)}`))];
+    return h('li', { class: r.total ? 'total-row' : g.marked ? '' : 'muted-row' },
+      h('div', { class: 'cl-top' }, h('strong', null, g.name), h('span', { class: 'cl-n' }, `${g.marked}/${g.total}`)),
+      h('div', { class: 'cl-pills' }, ...pills),
+      !r.total && r.last ? h('div', { class: 'meta' }, `Последняя отметка: ${whenBy(r.last.at, r.last.by)}`) : null);
+  }));
+  el.append(h('div', { class: 'card flush' }, h('div', { class: 'card-head' }, h('h2', null, 'По классам')), lines,
     dataTable({
-      caption: 'Обход по классам', rows, persistKey: 'day-classes', rowClass: (r) => (r.total ? 'total-row' : r.g.done ? '' : r.g.marked ? '' : 'muted-row'),
+      caption: 'Обход по классам', rows, persistKey: 'day-classes', wide: true, rowClass: (r) => (r.total ? 'total-row' : r.g.done ? '' : r.g.marked ? '' : 'muted-row'),
       columns: [
         { key: 'cls', label: 'Класс', render: (r) => (r.total ? r.g.name : h('strong', null, r.g.name)) },
         { key: 'room', label: 'Каб.', render: (r) => (r.total ? '' : r.g.room || '—') },

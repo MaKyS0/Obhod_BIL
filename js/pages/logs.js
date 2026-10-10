@@ -43,7 +43,7 @@ export function render(ctx) {
     h('div', { class: 'filters-actions' }, h('button', { type: 'submit', class: 'btn btn-primary', id: 'logApply' }, 'Показать'), btn('Сбросить', reset, 'ghost')));
   el.append(form);
 
-  const table = h('table', { class: 'data', 'aria-label': 'Журнал действий' },
+  const table = h('table', { class: 'data log', 'aria-label': 'Журнал действий' },
     h('thead', null, h('tr', null, ['Время', 'Кто', 'Событие', 'Что именно'].map((t) => h('th', { scope: 'col' }, t)))), tbody);
   el.append(h('div', { class: 'card flush' }, h('div', { class: 'table-wrap' }, table), h('div', { class: 'log-foot' }, status, more)));
 

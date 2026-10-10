@@ -10,6 +10,12 @@
   <meta name="theme-color" content="#1f4e79">
   <title>Костанай БИЛ</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icon-180.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Обход БИЛ">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <link rel="stylesheet" href="css/base.css">
@@ -67,6 +73,7 @@
         <div class="topbar-end">
           <span class="year-badge" id="yearBadge" title="Текущий учебный год"></span>
           <button class="sync-status" id="syncStatus" type="button"></button>
+          <button class="theme-btn search-toggle" id="searchToggle" type="button" aria-label="Поиск" aria-controls="searchForm" aria-expanded="false" hidden></button>
           <button class="theme-btn" id="themeBtn" type="button" aria-label="Тема оформления"></button>
         </div>
       </header>

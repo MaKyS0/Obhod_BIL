@@ -2,6 +2,7 @@
 import { openDb } from './core/db.js';
 import { createStore } from './core/store.js';
 import { createRouter } from './core/router.js';
+import { safeReload } from './core/reload-guard.js';
 import { createRepo } from './services/repo.js';
 import { startAutoSync, syncNow, describeSync } from './services/sync.js';
 import { createLive, describeLive } from './services/live.js';
@@ -129,7 +130,7 @@ async function main() {
             if (st.status !== 'allowed' || (st.role || 'user') !== known) throw Object.assign(new Error('closed'), { code: 'auth' });
           }
         } catch (e) {
-          if (e.code === 'auth') { await resetJoin(); forgetRole(); location.reload(); } // доступ закрыт или роль изменена — экран допуска разберётся заново
+          if (e.code === 'auth') { await resetJoin(); forgetRole(); safeReload('доступ или роль изменились'); } // доступ закрыт или роль изменена — экран допуска разберётся заново
         } // нет связи — работаем с тем, что на устройстве
       })();
     } else ({ role } = await runGate({ endpoint, store, repo, db, view, onShown: () => splash.hide() }));
@@ -145,8 +146,8 @@ async function main() {
       endpoint,
       role,
       canSheets: access.admin,
-      onForbidden: () => location.reload(), // доступ закрыт — экран допуска сотрёт локальные данные
-      onRole: async () => { await resetJoin(); forgetRole(); location.reload(); }, // сервер назвал другую роль: перезагрузка соберёт экран заново и заново заберёт базу
+      onForbidden: () => safeReload('доступ закрыт'), // доступ закрыт — экран допуска сотрёт локальные данные
+      onRole: async () => { await resetJoin(); forgetRole(); safeReload('сервер назвал другую роль'); }, // сервер назвал другую роль: перезагрузка соберёт экран заново и заново заберёт базу
       onConflict: () => toast('Часть ваших изменений не применена: те же данные (например, учебный год) успел изменить другой пользователь. Экран обновлён.', 'error'),
     });
     splash.status('Подключаем общую базу…');
@@ -173,6 +174,18 @@ async function main() {
   $('#menuBtn').appendChild(icon('menu', 18));
   $('#searchForm').prepend(icon('search', 16));
   if (!access.admin) $('#searchForm').hidden = true; // поиск ведёт по всем ученикам и персоналу — только администратору
+  // На телефоне поиск прячется за кнопкой-лупой: шапка занимает одну строку, а не три
+  const searchToggle = $('#searchToggle');
+  if (access.admin) {
+    searchToggle.hidden = false;
+    searchToggle.appendChild(icon('search', 16));
+    searchToggle.addEventListener('click', () => {
+      const on = !document.body.classList.contains('search-open');
+      document.body.classList.toggle('search-open', on);
+      searchToggle.setAttribute('aria-expanded', String(on));
+      if (on) $('#globalSearch').focus();
+    });
+  }
 
   const router = createRouter({
     view,
@@ -188,6 +201,7 @@ async function main() {
       if (!route.refreshed) window.scrollTo(0, 0); // при обновлении той же страницы (чужая правка, своя отметка) прокрутка остаётся на месте
       const inSearch = route.name === 'search';
       if (!inSearch && document.activeElement !== searchInput) searchInput.value = '';
+      if (!inSearch) { document.body.classList.remove('search-open'); searchToggle.setAttribute('aria-expanded', 'false'); }
     },
   });
 

@@ -133,6 +133,7 @@ details.class-block .inner { padding: 4px 14px 12px; }
 /* ---------- Обход (сначала телефон) ---------- */
 .round-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .round-clock { margin-left: auto; font: 600 20px/1 var(--mono); letter-spacing: .02em; color: var(--text); font-variant-numeric: tabular-nums; }
+.round-datebar { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
 .round-date { display: flex; align-items: center; gap: 8px; margin: 0; }
 .round-date input { min-width: 150px; }
 .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
@@ -145,7 +146,9 @@ details.class-block .inner { padding: 4px 14px 12px; }
 .duty-line { display: flex; flex-wrap: wrap; gap: 6px; font-size: 14px; }
 .duty-line .k { color: var(--muted); }
 .round-sum { display: grid; gap: 8px; margin-bottom: 10px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
-.round-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13.5px; color: var(--text-2); }
+.round-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 13.5px; color: var(--text-2); }
+.rs-main { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.rs-badges { display: flex; flex-wrap: wrap; gap: 4px 6px; }
 .round-stats b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .round-progress { height: 6px; background: var(--surface-3); border-radius: 3px; overflow: hidden; }
 .round-progress > i { display: block; width: 100%; height: 100%; background: var(--success); border-radius: 3px; transform-origin: left center; transform: scaleX(0); }
@@ -214,7 +217,20 @@ details.class-block .inner { padding: 4px 14px 12px; }
 }
 @media (max-width: 639px) {
   .round-sum { position: sticky; top: 0; z-index: 5; margin: 0 -12px 10px; border-radius: 0; border-left: 0; border-right: 0; padding: 8px 12px; gap: 6px; }
-  .round-stats { gap: 2px 10px; font-size: 12.5px; }
+  .round-stats { gap: 4px; font-size: 12.5px; flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+  .rs-main { gap: 2px 12px; }
+  .rs-badges { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px; }
+  .rs-badges .rc { flex: none; }
+  .round-datebar { gap: 2px; }
+  .round-datebar .round-date { flex: 1; min-width: 0; }
+  .round-datebar .round-date input { width: 100%; text-align: center; }
+  .round-find { gap: 8px; }
+  .round-find .round-search-wrap { order: 1; flex: 1 1 0; }
+  .round-find > .btn { order: 2; flex: none; }
+  .round-find .seg { order: 3; flex: 1 0 100%; }
+  .round-find .seg button { flex: 1; }
+  .round-bar { justify-content: space-between; }
+  .round-bar .seg button { padding: 4px 14px; }
   .rc { font-size: 12px; padding: 0 5px; line-height: 20px; }
   .round-date input { min-width: 0; }
   .round-clock { font-size: 17px; }
@@ -254,3 +270,41 @@ td.cell-actions { text-align: right; white-space: nowrap; }
 .table-tools .filters-box { flex: 1 0 100%; }
 @media (min-width: 640px) { .table-tools .filters-box { flex: 0 1 auto; } }
 .setting-row .sr-control .field.one > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+/* Узкий телефон: «Заполнить как вчера» вверху — только значок (подпись остаётся в подсказке и для скринридера) */
+@media (max-width: 479px) { .round-find > .btn { padding: 0; width: 44px; min-height: 44px; } .round-find > .btn > span { display: none; } }
+
+/* Обзор дня на телефоне: список классов вместо широкой таблицы */
+.class-lines { display: none; list-style: none; margin: 0; padding: 0; }
+.class-lines li { padding: 9px 14px; border-bottom: 1px solid var(--border); }
+.class-lines li:last-child { border-bottom: 0; }
+.class-lines li.muted-row { color: var(--muted); }
+.cl-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
+.cl-n { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-2); }
+.cl-pills { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+.pill { padding: 0 7px; border-radius: 3px; font-size: 12.5px; line-height: 20px; background: var(--surface-3); color: var(--text-2); }
+.pill.ok { background: var(--success-weak); color: var(--success); }
+.pill.bad { background: var(--danger-weak); color: var(--danger); }
+@media (max-width: 639px) {
+  .class-lines { display: block; }
+  .only-wide { display: none; }
+  .date-step { flex: 1 1 100%; flex-wrap: wrap; }
+  .date-step input { flex: 1 1 140px; min-width: 0; }
+}
+
+/* Журнал и календарь на телефоне: строка — один блок, а не пять узких колонок */
+.only-narrow { display: none; }
+@media (max-width: 639px) {
+  .only-narrow { display: block; }
+  table.log thead, table.cal thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  table.log, table.log tbody, table.log tr, table.log td { display: block; width: 100%; }
+  table.log tr { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  table.log td { padding: 0; border: 0; }
+  table.log td:nth-child(1) { float: right; width: auto; text-align: right; }
+  table.log td:nth-child(3) { margin: 3px 0; }
+  table.log td:nth-child(4) { color: var(--text-2); overflow-wrap: anywhere; }
+  table.cal td:nth-child(2), table.cal td:nth-child(3), table.cal td:nth-child(4) { display: none; }
+  table.cal td { vertical-align: top; }
+  .cal-info { margin-top: 4px; font-size: 13px; color: var(--text-2); }
+}
+.round-sum > *, .round-stats > * { min-width: 0; }
+.round-sum { grid-template-columns: minmax(0, 1fr); }

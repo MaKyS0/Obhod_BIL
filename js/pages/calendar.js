@@ -37,13 +37,15 @@ export function render(ctx) {
     const info = dayInfo(s, date);
     const weekend = wd === 0 || wd === 6;
     rows.push(h('tr', { 'data-date': date, class: `${info.holiday ? 'is-holiday' : ''}${date === today ? ' is-today' : ''}` },
-      h('td', { class: 'nowrap' }, h('strong', null, String(d)), ' ', h('span', { class: weekend ? 'muted' : '' }, WEEKDAYS[wd])),
+      h('td', { class: 'nowrap' }, h('strong', null, String(d)), ' ', h('span', { class: weekend ? 'muted' : '' }, WEEKDAYS[wd]),
+        // на телефоне колонки статуса, дежурных и заметки схлопываются в одну строку под числом
+        info.holiday || info.dutyLabel || info.note ? h('div', { class: 'cal-info only-narrow' }, info.holiday ? badge('Выходной', 'warn') : null, info.dutyLabel ? h('div', null, `Дежурный: ${info.dutyLabel}`) : null, info.note ? h('div', { class: 'meta' }, info.note) : null) : null),
       h('td', null, info.holiday ? badge('Выходной', 'warn') : h('span', { class: 'muted' }, 'обычный день')),
       h('td', null, info.dutyLabel || h('span', { class: 'muted' }, '—')),
       h('td', null, info.note || h('span', { class: 'muted' }, '—')),
       h('td', { class: 'cell-actions' }, btn('Изменить', () => edit(date), 'sm', { 'data-edit': date }))));
   }
-  el.append(h('div', { class: 'card flush' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data', 'aria-label': 'Дни месяца' },
+  el.append(h('div', { class: 'card flush' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data cal', 'aria-label': 'Дни месяца' },
     h('thead', null, h('tr', null, ['День', 'Статус', 'Дежурные', 'Заметка', ''].map((t) => h('th', { scope: 'col' }, t)))), h('tbody', null, rows)))));
 
   function edit(date) {

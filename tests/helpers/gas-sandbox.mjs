@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const CODE = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../google-apps-script/Code.gs'), 'utf8');
+const CODE = fs.readFileSync(process.env.LYC_GAS_FILE || path.join(path.dirname(fileURLToPath(import.meta.url)), '../../google-apps-script/Code.gs'), 'utf8');
 
 export function makeSandbox({ now = () => Date.now(), timeZone = 'Asia/Aqtobe' } = {}) {
   const props = {};

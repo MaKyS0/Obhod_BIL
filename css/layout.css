@@ -119,19 +119,28 @@ main { padding: 18px 28px 36px; max-width: 1280px; width: 100%; outline: none; f
   .sidebar { position: fixed; left: 0; top: 0; z-index: 30; width: 272px; transform: translateX(-100%); visibility: hidden; transition: transform .22s ease-out, visibility .22s; }
   body.nav-open .sidebar { transform: none; visibility: visible; box-shadow: 8px 0 28px rgba(0,0,0,.25); }
   #nav a, .nav-group:first-child a { min-height: 44px; font-size: 15px; }
-  .topbar { flex-wrap: wrap; height: auto; padding: 6px 12px; gap: 8px; position: static; }
+  .topbar { flex-wrap: wrap; height: auto; min-height: 52px; padding: 6px 12px; gap: 8px; position: static; padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
   .year-badge::after, .theme-btn::before { display: none; }
   .topbar-end { gap: 6px; }
   .topbar .menu-btn { display: inline-flex; }
-  .global-search { order: 5; flex: 1 0 100%; max-width: none; }
+  .global-search { order: 5; flex: 1 0 100%; max-width: none; display: none; }
+  body.search-open .global-search { display: block; }
+  .search-toggle { display: inline-grid; }
+  .search-toggle[aria-expanded="true"] { background: var(--primary-weak); color: var(--primary); }
+  /* Состояние базы на телефоне — точка (нормальное состояние) или короткий текст (проблема): строка шапки остаётся одной */
+  .sync-status[data-kind="ok"] > span:last-child, .sync-status[data-kind="off"] > span:last-child { display: none; }
+  .sync-status { max-width: 120px; padding: 0 6px; }
   .topbar-end { margin-left: auto; }
   .year-badge .yb-label { display: none; }
-  .sync-status { max-width: 150px; }
-  main { padding: 14px 12px 32px; }
+  main { padding: 12px 12px calc(28px + env(safe-area-inset-bottom)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
   .banners { padding: 0 12px; }
   .site-foot { margin: 0 12px; padding: 12px 0 20px; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+
+/* Кнопка поиска в шапке — только на телефоне (на широком экране строка поиска всегда видна) */
+.search-toggle { display: none; }
+.search-toggle[hidden] { display: none !important; }
 
 /* Допуск посетителей */
 .card.owner-only, .field.owner-only, .owner-only-block { display: none; }

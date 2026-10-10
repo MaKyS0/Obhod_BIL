@@ -1,0 +1,17 @@
+{
+  "name": "Костанай БИЛ — обход",
+  "short_name": "Обход БИЛ",
+  "description": "Вечерний обход и учёт лицея",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f3f5",
+  "theme_color": "#1f4e79",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

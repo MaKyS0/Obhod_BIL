@@ -11,7 +11,7 @@ const memo = new Map();
  * pageSize: строк на странице (0 — без разбиения). resetKey: меняется вместе с фильтрами → возврат на первую страницу.
  * selectable: { id(row) => string, actions: [{ label, icon, kind, run(selectedRows) }] } — колонка с флажками и панель действий.
  */
-export function dataTable({ columns, rows, caption = '', empty = 'Ничего не найдено', sortKey = null, sortDir = 1, rowClass = null, onSort, pageSize = 0, pageSizes = [25, 50, 100], resetKey = '', selectable = null, persistKey = null }) {
+export function dataTable({ columns, rows, caption = '', empty = 'Ничего не найдено', sortKey = null, sortDir = 1, rowClass = null, onSort, pageSize = 0, pageSizes = [25, 50, 100], resetKey = '', selectable = null, persistKey = null, wide = false }) {
   const key = persistKey || caption || 'table';
   let st = memo.get(key);
   if (!st) {
@@ -89,7 +89,7 @@ export function dataTable({ columns, rows, caption = '', empty = 'Ничего �
         selectable ? h('td', { class: 'col-check', 'data-label': '' }, h('input', { type: 'checkbox', 'aria-label': 'Выбрать строку', checked: on, onchange: (e) => { e.target.checked ? st.selected.add(id) : st.selected.delete(id); draw(); } })) : null,
         columns.map((c) => h('td', { class: `${c.num ? 'num' : ''} ${c.actions ? 'actions' : ''}`.trim(), 'data-label': c.actions ? '' : c.label }, c.render ? c.render(r) : r[c.key])));
     });
-    wrap.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'data responsive' }, caption ? h('caption', { class: 'sr-only' }, caption) : null, h('thead', null, head), h('tbody', null, body))));
+    wrap.appendChild(h('div', { class: wide ? 'table-wrap only-wide' : 'table-wrap' }, h('table', { class: wide ? 'data' : 'data responsive' }, caption ? h('caption', { class: 'sr-only' }, caption) : null, h('thead', null, head), h('tbody', null, body))));
 
     if (pageSize && all.length > Math.min(...pageSizes)) {
       const from = (st.page - 1) * size + 1;

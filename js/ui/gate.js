@@ -3,6 +3,7 @@ import { h } from './dom.js';
 import { field } from './form.js';
 import { toastError } from './toast.js';
 import { logoMark } from './logo.js';
+import { safeReload } from '../core/reload-guard.js';
 import { requestAccess, accessStatus, verifyOwner } from '../services/access.js';
 
 // Запоминаем, что это устройство уже допущено: при следующих открытиях сайт показывается сразу (данные уже на устройстве),
@@ -156,7 +157,7 @@ export function watchAccess(endpoint, intervalMs = 300000) {
   const id = setInterval(async () => {
     try {
       const { status } = await accessStatus(endpoint);
-      if (status === 'denied' || status === 'revoked' || status === 'none') location.reload();
+      if (status === 'denied' || status === 'revoked' || status === 'none') safeReload('доступ закрыт');
     } catch { /* нет связи — проверим позже */ }
   }, intervalMs);
   return () => clearInterval(id);
