@@ -2,14 +2,14 @@
 // Рассчитано на телефон: крупные кнопки, классы-«гармошки», отметка одним касанием; время и имя отметившего видны у каждого.
 import { h } from '../ui/dom.js';
 import { pageHead, btn, link, emptyState, notice } from '../ui/common.js';
-import { toastError } from '../ui/toast.js';
-import { roundView, ROUND_PLACES, ROUND_LABEL, ROUND_REASONS, ROUND_KINDS, REASON_MAX, earliestRoundDate, isHere } from '../domain/rounds.js';
+import { toast, toastError } from '../ui/toast.js';
+import { roundView, copyPlan, shiftDate, ROUND_PLACES, ROUND_LABEL, ROUND_REASONS, ROUND_KINDS, REASON_MAX, earliestRoundDate, isHere } from '../domain/rounds.js';
 import { dayInfo } from '../domain/calendar.js';
 import { openModal, confirmAction } from '../ui/modal.js';
 import { icon } from '../ui/icons.js';
 import { field } from '../ui/form.js';
 import { fullName, shortName } from '../domain/people.js';
-import { todayISO } from '../domain/dates.js';
+import { todayISO, formatDate } from '../domain/dates.js';
 import { nStudents } from '../domain/plural.js';
 import { hm } from '../ui/round-ui.js';
 
@@ -52,10 +52,11 @@ export function render(ctx) {
     type: 'button', 'data-filter': f.key, 'aria-pressed': ui.filter === f.key ? 'true' : 'false',
     onclick: () => { ui.filter = f.key; for (const b of chips.children) b.setAttribute('aria-pressed', b.dataset.filter === f.key ? 'true' : 'false'); draw(); },
   }, f.label)));
+  const copyBtn = btn('Заполнить как вчера', () => copyFromPrev(), '', { icon: 'undo', id: 'copyPrevBtn' });
   el.append(head,
     h('div', { class: 'round-bar' }, kinds, h('label', { class: 'round-date' }, h('span', { class: 'sr-only' }, 'Дата'), dateInput), clock),
     notes, h('div', { class: 'round-sum' }, stats, progress),
-    h('div', { class: 'round-find' }, h('div', { class: 'round-search-wrap' }, icon('search', 16), search), chips),
+    h('div', { class: 'round-find' }, h('div', { class: 'round-search-wrap' }, icon('search', 16), search), chips, copyBtn),
     list);
 
   const tick = setInterval(() => { clock.textContent = clockText(); }, 15000);
@@ -96,6 +97,14 @@ export function render(ctx) {
       ...ROUND_PLACES.filter((p) => !isHere(p.key)).map((p) => h('span', { class: `rc rc-${p.key}` }, `${p.label}: `, num(p.key, totals.byPlace[p.key]))),
       h('span', { class: 'rc rc-sleeping' }, `${ROUND_LABEL.sleeping}: `, num('sleeping', totals.byPlace.sleeping)),
       h('span', { class: 'rc rc-none' }, 'Не отмечено: ', num('none', totals.total - totals.marked, 'roundUnmarked')));
+
+    // «Заполнить как вчера»: доступно, если за предыдущий день есть отметки для ещё неотмеченных учеников
+    const prevDate = shiftDate(ui.date, -1);
+    const plan = copyPlan(ctx.state, prevDate, ui.date, ui.kind);
+    const label = ui.date === today ? 'вчера' : `за ${formatDate(prevDate).slice(0, 5)}`;
+    copyBtn.querySelector('span').textContent = `Заполнить как ${label}`;
+    copyBtn.disabled = !plan.length;
+    copyBtn.title = plan.length ? `Неотмеченным (${plan.length}) поставить статус как ${label}` : `Нечего копировать: за ${formatDate(prevDate)} нет отметок для неотмеченных учеников`;
 
     const focusKey = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.rk : null;
     if (!v.groups.length) {
@@ -214,6 +223,27 @@ export function render(ctx) {
       const cur = ctx.state.rounds.find((r) => r.studentId === x.student.id && r.date === ui.date && (r.kind || 'evening') === ui.kind);
       askReason(x.student, place, cur ? cur.reason || '' : '');
     }
+  }
+
+  // Копия вчерашнего обхода неотмеченным: показываем, что именно будет поставлено, и просим подтвердить.
+  async function copyFromPrev() {
+    const prevDate = shiftDate(ui.date, -1);
+    const plan = copyPlan(ctx.state, prevDate, ui.date, ui.kind);
+    if (!plan.length) return;
+    const by = {};
+    for (const p of plan) by[p.place] = (by[p.place] || 0) + 1;
+    const ok = await confirmAction({
+      title: 'Заполнить как вчера',
+      message: `Неотмеченным ученикам (${plan.length}) будет поставлен тот же статус, что и ${ui.date === today ? 'вчера' : `за ${formatDate(prevDate)}`}. Уже отмеченные не изменятся.`,
+      details: ROUND_PLACES.filter((p) => by[p.key]).map((p) => `${p.label}: ${by[p.key]}`),
+      confirmLabel: `Заполнить: ${plan.length}`, kind: 'primary',
+    });
+    if (!ok) return;
+    try {
+      const n = await repo.copyRounds(prevDate, ui.date, { kind: ui.kind, by: myName() });
+      toast(`Отмечено учеников: ${n}`);
+    } catch (e) { toastError(e); }
+    draw();
   }
 
   async function bulk(g, ids) {

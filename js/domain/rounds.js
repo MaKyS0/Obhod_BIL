@@ -49,6 +49,21 @@ export const ROUND_KEEP = { evening: ROUND_KEEP_DAYS, morning: 2, extra: 2 }; //
 export const earliestRoundDate = (today, kind = 'evening') => shiftDate(today, -((ROUND_KEEP[kind] || ROUND_KEEP_DAYS) - 1));
 
 /**
+ * «Заполнить как вчера»: кому из неотмеченных на дату `to` можно поставить статус (и причину) отметки за дату `from` того же вида проверки.
+ * Возвращает [{ studentId, classId, place, reason }].
+ */
+export function copyPlan(state, from, to, kind = 'evening') {
+  const src = new Map();
+  for (const g of roundView(state, from, kind).groups) for (const x of g.students) if (x.place) src.set(x.student.id, x);
+  const plan = [];
+  for (const g of roundView(state, to, kind).groups) for (const x of g.students) {
+    const prev = src.get(x.student.id);
+    if (!x.place && prev) plan.push({ studentId: x.student.id, classId: g.id === '_none' ? null : g.id, place: prev.place, reason: isHere(prev.place) ? '' : prev.reason });
+  }
+  return plan;
+}
+
+/**
  * Состояние обхода на дату: группы по классам текущего года.
  * done — в классе есть ученики и все отмечены (экран красит такой класс в зелёный).
  */

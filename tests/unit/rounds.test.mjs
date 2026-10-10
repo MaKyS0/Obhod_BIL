@@ -209,3 +209,28 @@ test('календарь и классы: выходной день, дежур�
   await assert.rejects(() => env.repo.updateClass(g.id, { room: 'х'.repeat(30) }), /не длиннее/);
   assert.equal(roundView(env.S(), today).classesLeft, 15);
 });
+
+test('«заполнить как вчера»: неотмеченным ставится вчерашний статус с причиной, отмеченные и другие виды проверки не меняются', async () => {
+  const { copyPlan } = await import('../../js/domain/rounds.js');
+  const env = await makeEnv();
+  await seed(env, 6);
+  const yest = shiftDate(today, -1);
+  const [a, b, c, d] = roundView(env.S(), today).groups[0].students.map((x) => x.student.id);
+  await env.repo.setRound(a, yest, 'sleeping');
+  await env.repo.setRound(b, yest, 'sick');
+  await env.repo.setRoundReason(b, yest, 'Температура');
+  await env.repo.setRound(c, yest, 'home');
+  await env.repo.setRound(d, today, 'absent'); // сегодня уже отмечен — не трогаем
+  await env.repo.setRound(d, yest, 'sleeping');
+  assert.equal(copyPlan(env.S(), yest, today).length, 3);
+  assert.equal(copyPlan(env.S(), yest, today, 'morning').length, 0, 'утренняя проверка вчера пуста');
+  assert.equal(await env.repo.copyRounds(yest, today, { by: 'Анна' }), 3);
+  const v = roundView(env.S(), today);
+  const st = Object.fromEntries(v.groups[0].students.map((x) => [x.student.id, x]));
+  assert.equal(st[a].place, 'sleeping');
+  assert.deepEqual([st[b].place, st[b].reason, st[b].by], ['sick', 'Температура', 'Анна']);
+  assert.equal(st[c].place, 'home');
+  assert.equal(st[d].place, 'absent', 'сегодняшняя отметка сохранена');
+  assert.equal(await env.repo.copyRounds(yest, today), 0, 'повтор ничего не меняет');
+  await assert.rejects(env.repo.copyRounds(yest, shiftDate(today, 1)), /только сегодняшний/);
+});

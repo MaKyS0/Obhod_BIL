@@ -10,7 +10,7 @@ import { planPromotion, planUndo, planFinalizeGraduation } from '../domain/promo
 import { planStudentImport, planStaffImport, parseJsonImport } from '../domain/importer.js';
 import { defaultSettings } from '../domain/state.js';
 import { normalizeDay } from '../domain/calendar.js';
-import { isPlace, isKind, roundId, kindOf, earliestRoundDate, cleanReason } from '../domain/rounds.js';
+import { isPlace, isKind, roundId, kindOf, earliestRoundDate, cleanReason, copyPlan } from '../domain/rounds.js';
 
 export class UserError extends Error {
   constructor(message, code = 'USER') {
@@ -379,6 +379,26 @@ export function createRepo(store) {
       if (!n && !(changes.del.rounds || []).length) return 0;
       await store.commit(changes, { system: true });
       return n;
+    },
+
+    // «Заполнить как вчера»: неотмеченным на дату `to` ставится статус (и причина) за дату `from`; уже отмеченные не меняются. Возвращает, сколько отмечено.
+    async copyRounds(from, to, { kind = 'evening', by = '' } = {}) {
+      if (!isKind(kind)) throw new UserError('Неизвестный вид проверки');
+      const today = todayISO();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(to) || to > today || to < earliestRoundDate(today, kind)) throw new UserError('Отметить можно только сегодняшний обход и два предыдущих дня');
+      const plan = copyPlan(S(), from, to, kind);
+      if (!plan.length) return 0;
+      const changes = emptyChanges();
+      const now = nowISO();
+      for (const p of plan) {
+        const rec = { id: roundId(to, p.studentId, kind), date: to, studentId: p.studentId, classId: p.classId, place: p.place, at: now, updatedAt: now };
+        if (kind !== 'evening') rec.kind = kind;
+        if (by) rec.by = String(by).slice(0, 80);
+        if (p.reason) rec.reason = p.reason;
+        addPut(changes, 'rounds', rec);
+      }
+      await store.commit(changes, { system: true });
+      return plan.length;
     },
 
     // Причина к отметке обхода (например, «Температура»). Пустая строка убирает причину. Сначала нужно отметить место.

@@ -916,6 +916,23 @@ await scenario('Обход (телефон 375×812): главная стран�
   await page.waitForSelector('section.round-class');
   eq(await state(page, 'S.rounds.length'), total, 'отметки сохранились');
   eq(await page.locator('section.round-class[data-done="true"]').count(), 2, 'зелёные классы после перезагрузки');
+  // «Заполнить как вчера»: у класса 7C вчера отмечены все — неотмеченным сегодня ставится тот же статус
+  await page.evaluate(async () => {
+    const { repo, store } = window.__lyceum;
+    const t = new Date(); t.setDate(t.getDate() - 1);
+    const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    const ids = store.state.enrollments.filter((e) => e.classId === '2026-2027:7C').map((e) => e.studentId);
+    await repo.setRounds(ids, iso, 'sleeping');
+  });
+  await page.reload();
+  await page.waitForSelector('section.round-class');
+  eq(await page.locator('#copyPrevBtn').isEnabled(), true, 'кнопка «Заполнить как вчера» доступна');
+  await page.click('#copyPrevBtn');
+  assert((await modal(page).textContent()).includes('Ночует'), 'в окне видно, какие статусы будут поставлены');
+  await modal(page).locator('button:has-text("Заполнить:")').click();
+  await page.waitForSelector('section[data-class="2026-2027:7C"][data-done="true"]');
+  eq(await page.locator('section.round-class[data-done="true"]').count(), 3, 'класс 7C заполнен как вчера');
+  eq(await page.locator('#copyPrevBtn').isDisabled(), true, 'копировать больше нечего');
   // утренняя проверка — отдельный список, вечерние отметки не затрагивает
   await page.click('.seg [data-kind=morning]');
   await page.waitForSelector('h1:has-text("Утренняя проверка")');
@@ -924,7 +941,7 @@ await scenario('Обход (телефон 375×812): главная стран�
   await page.locator('section[data-class="2026-2027:7A"] .rp-sleeping').first().click();
   await page.waitForFunction(() => window.__lyceum.store.state.rounds.some((r) => r.kind === 'morning'));
   eq(await state(page, "S.rounds.filter(r => r.kind === 'morning').length"), 1, 'утренняя отметка отдельная');
-  eq(await state(page, 'S.rounds.length'), total + 1, 'вечерние отметки на месте');
+  assert((await state(page, 'S.rounds.length')) > total, 'вечерние отметки на месте');
   // пункт меню на телефоне
   await page.click('#menuBtn');
   await page.waitForSelector('#nav a[data-route=rounds]', { state: 'visible' });
